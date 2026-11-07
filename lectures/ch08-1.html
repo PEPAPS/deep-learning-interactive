@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Optimization I: Why Training Is Hard</title>
+<meta name="description" content="Interactive notes for Deep Learning chapter 8.1–8.2: empirical risk minimization, surrogate losses and early stopping, batch and minibatch algorithms, ill-conditioning, local minima, saddle points and plateaus, cliffs and exploding gradients, long-term dependencies, inexact gradients, local vs. global structure, theoretical limits.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232a78d6'/%3E%3Cpath d='M6 9c5 0 6 14 10 14s5-14 10-14' fill='none' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<link rel="stylesheet" href="../css/style.css?v=11">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script defer src="../js/core.js?v=11"></script>
+<script defer src="../js/course.js?v=11"></script>
+<script defer src="../js/quiz.js?v=11"></script>
+<script defer src="../js/lectures/ch08-1.js?v=11"></script>
+</head>
+<body data-page="lecture" data-lecture="ch08-1">
+<script>
+window.TOPICS = {
+  data: [['s-minibatch', 'Shuffle the dataset']],
+  init: [['s-local-global', 'Start in a well-behaved region'], ['s-local-minima', 'Many equivalent solutions']],
+  batch: [['s-minibatch', 'Minibatch size & random sampling'], ['s-inexact', 'Noisy gradient estimates']],
+  loss: [['s-erm', 'Empirical risk'], ['s-surrogate', 'Surrogate losses'], ['s-local-global', 'Losses without a minimum']],
+  backward: [['s-longterm', 'Vanishing & exploding gradients'], ['s-cliffs', 'Cliffs: huge gradients']],
+  update: [['s-illcond', 'Ill-conditioning'], ['s-saddle', 'Saddle points & plateaus'], ['s-cliffs', 'Gradient clipping']],
+  final: [['s-surrogate', 'Early stopping on the true loss'], ['s-limits', 'Theoretical limits']]
+};
+</script>
+
+<main class="deck" id="deck">
+
+<section class="slide" id="s-title" data-part="Start here" data-title="Welcome: training is not pure optimization">
+  <div class="slide-head">
+    <span class="kicker">Lecture 7 · Chapter 8.1 – 8.2</span>
+    <h1>Optimization I: Why Training Is Hard</h1>
+    <p class="lede">Training a network is <b>not</b> the same as minimizing a function: we optimize a stand-in (empirical risk, surrogate losses) with noisy minibatch gradients and stop early. And the landscape itself is hard: <b>ill-conditioning</b>, <b>local minima</b>, <b>saddle points</b>, <b>cliffs</b>, <b>vanishing/exploding gradients</b>, and local directions that point the wrong way.</p>
+  </div>
+  <div class="road">
+    <div class="card big"><span class="kicker">Part 1 · 8.1</span><h4>Learning ≠ pure optimization</h4><ol><li>Risk vs. empirical risk</li><li>Surrogate losses &amp; early stopping</li><li>Batch and minibatch algorithms</li></ol><button class="btn primary go" type="button" data-goto="s-erm">Start →</button></div>
+    <div class="card big"><span class="kicker">Part 2 · 8.2</span><h4>Challenges</h4><ol><li>Ill-conditioning, local minima, saddles</li><li>Cliffs, long-term dependencies</li><li>Inexact gradients, local vs. global structure</li><li>Theoretical limits</li></ol><button class="btn primary go" type="button" data-goto="s-illcond">Jump to Part 2 →</button></div>
+  </div>
+</section>
+
+<section class="slide" id="s-loop" data-part="Start here" data-title="Where this lecture fits" data-stages="batch,loss,backward,update,final">
+  <div class="slide-head"><span class="kicker">Start here</span><h2>Where this lecture fits in training</h2><div class="stages"></div></div>
+  <p class="bigidea">Part 1 explains what the loop is <b>really</b> optimizing (steps 3, 5, 8). Part 2 is a catalogue of what can go wrong in steps 6–7 — the problems that Lectures 8 and 9 then solve.</p>
+  <div class="stack"><div data-widget="loop"></div>
+    <div class="row3">
+      <div class="card plain"><h3><span class="dot"></span>What we optimize</h3><p>Empirical risk with a surrogate loss, on minibatches — three steps away from the true goal.</p></div>
+      <div class="card plain"><h3><span class="dot"></span>What makes it hard</h3><p>The shape of J: badly scaled directions, saddles, cliffs, long products of weights, misleading local slopes.</p></div>
+      <div class="card plain"><h3><span class="dot"></span>Where the fixes are</h3><p>Momentum & Adam (L8), good initialization (L8), second-order ideas, batch norm, better architectures (L9).</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-erm" data-part="Part 1 · Learning vs. optimization (8.1)" data-title="Empirical risk minimization" data-stages="loss">
+  <div class="slide-head"><span class="kicker">8.1.1 · Empirical risk minimization</span><h2>Risk vs. empirical risk</h2><div class="stages"></div></div>
+  <p class="bigidea">We want low <b>risk</b> (expected loss on the true distribution) but can only compute the <b>empirical risk</b> (average loss on the training set). Minimizing the latter and hoping the former drops is <b>empirical risk minimization</b> — and it can overfit.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ J^*(\boldsymbol\theta)=\mathbb E_{(\mathbf x,y)\sim p_{\text{data}}}L\big(f(\mathbf x;\boldsymbol\theta),y\big) \]<span class="eqno">(8.1) risk</span>
+        \[ \mathbb E_{\mathbf x,y\sim\hat p_{\text{data}}(\mathbf x,y)}\big[L(f(\mathbf x;\boldsymbol\theta),y)\big]=\frac1m\sum_{i=1}^{m}L\big(f(\mathbf x^{(i)};\boldsymbol\theta),y^{(i)}\big) \]<span class="eqno">(8.2) empirical risk</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>If we knew \(p_{\text{data}}\), minimizing risk would be pure optimization. Knowing only samples makes it a <b>machine learning</b> problem.</li>
+          <li>Replace the true distribution by the empirical one \(\hat p_{\text{data}}\) (the training set) → empirical risk minimization.</li>
+          <li>Problems: high-capacity models can <b>memorize</b> the training set, and useful losses like the <b>0-1 loss</b> have no useful derivatives. So in deep learning we rarely do pure ERM — we optimize something even further from what we truly want.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Risk J*</dt><dd>Expected loss under the true data distribution (= generalization error).</dd>
+        <dt>Empirical risk</dt><dd>Average loss over the m training examples.</dd>
+        <dt>\(\hat p_{\text{data}}\)</dt><dd>Empirical distribution: probability 1/m on each training example.</dd>
+        <dt>0-1 loss</dt><dd>1 for a wrong class, 0 for a right one.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Three training losses 0.2, 0.5, 0.8 → empirical risk \((0.2+0.5+0.8)/3=0.5\).</li>
+        <li>On 10 000 fresh examples the average loss is 0.65 — an estimate of the risk; the 0.15 gap is overfitting.</li>
+        <li>In the demo: \(J^*(\theta)=(\theta-1.5)^2/3+0.25\); with m = 8 points the empirical minimizer might be θ̂ = 1.8 → true risk \(0.09/3+0.25=0.28\).</li>
+      </ol></div>
+    </div>
+    <div data-widget="riskVsEmpirical"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch05-1.html#/s-generalization">Training vs. test error (L1)</a> and <a href="ch05-4.html#/s-mle">MLE as expectation over p̂_data (L2)</a>.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch08-6.html#/s-risk">The objective J(θ) used by every optimizer (L9)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-surrogate" data-part="Part 1 · Learning vs. optimization (8.1)" data-title="Surrogate losses & early stopping" data-stages="loss,final">
+  <div class="slide-head"><span class="kicker">8.1.2 · Surrogate loss functions and early stopping</span><h2>Surrogate losses — and stopping before a minimum</h2><div class="stages"></div></div>
+  <p class="bigidea">When the loss we care about (0-1 error) can’t be optimized, we optimize a <b>surrogate</b> (negative log-likelihood). It can even learn <b>more</b>. And training stops by <b>early stopping</b> on the true loss — usually while gradients are still large.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Exactly minimizing expected 0-1 loss is typically intractable (exponential in input dimension), even for a linear classifier.</li>
+          <li>The NLL of the correct class is the usual <b>surrogate</b>: it estimates class probabilities; with good probabilities we pick the classes with least expected error.</li>
+          <li>Surprise: the <b>test</b> 0-1 loss often keeps decreasing long after the <b>training</b> 0-1 loss hits zero — the NLL keeps pushing the classes apart, making the classifier more confident and robust.</li>
+          <li>Pure optimization stops when the gradient is ≈ 0. Training stops when an <b>early-stopping</b> criterion (based on the true loss, e.g. validation 0-1 error) is met — often with large derivatives remaining.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Surrogate loss</dt><dd>A loss that is easy to optimize and acts as a proxy for the one we care about.</dd>
+        <dt>Margin</dt><dd>(2y − 1)·z: how far on the correct side of the boundary an example is.</dd>
+        <dt>Convergence criterion</dt><dd>The rule that decides when to stop training.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Example with margin 2 (correctly classified): 0-1 loss = 0, NLL = \(\log(1+e^{-2})=0.127\).</li>
+        <li>Margin 4: 0-1 loss still 0, NLL = \(\log(1+e^{-4})=0.018\) — NLL still rewards moving further.</li>
+        <li>Derivative of the 0-1 loss w.r.t. the margin: 0 at both points → no learning signal; NLL derivative \(-\sigma(-m)\): −0.119 and −0.018.</li>
+      </ol></div>
+    </div>
+    <div data-widget="surrogateLoss"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch06-1.html#/s-output-sigmoid">Sigmoid outputs + NLL (L4)</a> and <a href="ch07.html#/s-early-stop">early stopping (L6)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-minibatch" data-part="Part 1 · Learning vs. optimization (8.1)" data-title="Batch & minibatch algorithms" data-stages="data,batch">
+  <div class="slide-head"><span class="kicker">8.1.3 · Batch and minibatch algorithms</span><h2>Batch, stochastic and minibatch methods</h2><div class="stages"></div></div>
+  <p class="bigidea">The objective is a <b>sum over examples</b>, so its gradient is an <b>expectation</b> we can estimate from a random sample. Small random minibatches give fast, slightly noisy updates — usually far more efficient than exact gradients.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \boldsymbol\theta_{\text{ML}}=\arg\max_{\boldsymbol\theta}\sum_{i=1}^{m}\log p_{\text{model}}\big(\mathbf x^{(i)},y^{(i)};\boldsymbol\theta\big)=\arg\max_{\boldsymbol\theta}\ \mathbb E_{\mathbf x,y\sim\hat p_{\text{data}}}\log p_{\text{model}}(\mathbf x,y;\boldsymbol\theta) \]<span class="eqno">(8.3–8.4)</span>
+        \[ \nabla_{\boldsymbol\theta}J(\boldsymbol\theta)=\mathbb E_{\mathbf x,y\sim\hat p_{\text{data}}}\nabla_{\boldsymbol\theta}\log p_{\text{model}}(\mathbf x,y;\boldsymbol\theta),\qquad\text{SE}=\frac{\sigma}{\sqrt n} \]<span class="eqno">(8.5)</span>
+        \[ \hat{\mathbf g}=\frac1m\nabla_{\boldsymbol\theta}\sum_iL\big(f(\mathbf x^{(i)};\boldsymbol\theta),y^{(i)}\big)\ \text{ with fresh samples from }p_{\text{data}}\ \Rightarrow\ \text{unbiased for }\nabla J^* \]<span class="eqno">(8.7–8.8)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li><b>Less than linear returns</b>: n = 100 vs 10 000 examples → 100× compute, only 10× smaller standard error. Fast approximate gradients converge faster in total computation.</li>
+          <li><b>Redundancy</b>: many examples contribute nearly the same gradient (worst case: all identical — one sample would suffice).</li>
+          <li>Names: <b>batch / deterministic</b> = whole training set; <b>stochastic / online</b> = one example (online = from a stream); <b>minibatch</b> (now just “stochastic”) = in between. “Batch size” usually means minibatch size.</li>
+          <li><b>Choosing the size</b>: bigger = more accurate but diminishing returns; multicore hardware is underused below some minimum; memory grows with batch size; GPUs like powers of 2 (32–256, 16 for big models); small batches <b>regularize</b> (best generalization often at size 1) but need small learning rates and many steps.</li>
+          <li>Gradient-only methods are robust with ~100 examples; second-order methods need ~10 000 because multiplying by \(\mathbf H^{-1}\) amplifies errors.</li>
+          <li><b>Randomness matters</b>: examples within and across minibatches should be independent → <b>shuffle</b> (once, then store shuffled, is usually enough).</li>
+          <li>Each minibatch of <b>new</b> data gives an unbiased gradient of the <b>generalization</b> error; only the first epoch does this exactly, but extra epochs still help (lower training error). With huge datasets, one pass (or less) is common — underfitting and compute dominate.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Epoch</dt><dd>One full pass over the training set.</dd>
+        <dt>Standard error σ/√n</dt><dd>Typical error of an average of n samples.</dd>
+        <dt>Shuffle</dt><dd>Randomize the order of examples so consecutive ones are independent.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Per-example gradient std σ = 2. Batch 100: SE = 2/10 = 0.2. Batch 10 000: SE = 2/100 = 0.02.</li>
+        <li>50 000 training examples with batch 128: \(\lceil50000/128\rceil=391\) updates per epoch.</li>
+        <li>Same budget with full-batch GD: 1 update per epoch — 391× fewer steps.</li>
+      </ol></div>
+    </div>
+    <div data-widget="batchNoise"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch04-3.html#/s-sgd">SGD (L3)</a> and <a href="ch05-4.html#/s-variance">standard error (L2)</a>.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch08-3.html#/s-sgd">Learning-rate decay for noisy gradients (L8)</a> and <a href="ch08-6.html#/s-bn-how">batch norm statistics from the minibatch (L9)</a>.</span></li>
+  </ul></div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-illcond" data-part="Part 2 · Challenges (8.2)" data-title="Ill-conditioning" data-stages="update">
+  <div class="slide-head"><span class="kicker">8.2.1 · Ill-conditioning</span><h2>Ill-conditioning</h2><div class="stages"></div></div>
+  <p class="bigidea">Even convex problems suffer when the Hessian is <b>ill-conditioned</b>: the step must be tiny to avoid going uphill along steep directions, so learning is slow <b>despite a strong gradient</b>.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \text{change in cost after a step }-\epsilon\mathbf g:\qquad\tfrac12\epsilon^2\,\mathbf g^{\top}\mathbf H\mathbf g-\epsilon\,\mathbf g^{\top}\mathbf g \]<span class="eqno">(8.10)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Machine learning used to avoid general optimization by designing <b>convex</b> problems. Neural nets force us into the general non-convex case — but some problems exist even for convex functions.</li>
+          <li>Ill-conditioning becomes a problem when \(\frac12\epsilon^2\mathbf g^\top\mathbf H\mathbf g&gt;\epsilon\mathbf g^\top\mathbf g\). SGD then looks “stuck”: even very small steps increase the cost.</li>
+          <li>Observed in real networks: the gradient norm \(\mathbf g^\top\mathbf g\) doesn’t shrink much during training, but \(\mathbf g^\top\mathbf H\mathbf g\) grows by over an order of magnitude.</li>
+          <li>Newton’s method is the classic fix for ill-conditioned convex problems, but it needs big changes before it works for neural networks (Lecture 9).</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Ill-conditioned</dt><dd>Hessian eigenvalues differ hugely (large condition number).</dd>
+        <dt>gᵀg</dt><dd>Squared gradient length: the first-order gain per unit step.</dd>
+        <dt>gᵀHg</dt><dd>Curvature along the gradient direction: the second-order penalty.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>gᵀg = 4, gᵀHg = 400, ε = 0.05.</li>
+        <li>Gain \(\epsilon\mathbf g^\top\mathbf g=0.2\); penalty \(\frac12(0.05)^2(400)=0.5\) → cost changes by +0.3: <b>uphill</b>.</li>
+        <li>Need \(\epsilon&lt;2\mathbf g^\top\mathbf g/\mathbf g^\top\mathbf H\mathbf g=8/400=0.02\) just to go downhill — tiny steps.</li>
+      </ol></div>
+    </div>
+    <div data-widget="illcondTrace"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch04-3.html#/s-condition">Condition number (L3)</a> and <a href="ch04-3.html#/s-jacobian-hessian">the second-order step formula (L3)</a>.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch08-3.html#/s-momentum">Momentum (L8)</a>, <a href="ch08-3.html#/s-adagrad">adaptive learning rates (L8)</a> and <a href="ch08-6.html#/s-newton">Newton & approximations (L9)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-local-minima" data-part="Part 2 · Challenges (8.2)" data-title="Local minima" data-stages="init">
+  <div class="slide-head"><span class="kicker">8.2.2 · Local minima</span><h2>Local minima: many, but mostly harmless</h2><div class="stages"></div></div>
+  <p class="bigidea">Neural nets have astronomically many local minima — but most come from <b>symmetries</b> (equivalent networks with identical cost). Local minima only hurt if their cost is much <b>higher</b> than the global minimum, and for large nets that seems rare.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Convex: any local minimum is global (maybe a flat bottom region — any point there is fine). Non-convex nets: essentially guaranteed to have an extremely large number of local minima.</li>
+          <li><b>Model identifiability</b>: a model is identifiable if enough data rules out all but one parameter setting. Nets aren’t:
+            <ul><li><b>Weight-space symmetry</b>: swap two hidden units (incoming and outgoing weights) → same function; m layers of n units → \(n!^m\) arrangements.</li>
+            <li>ReLU / maxout: scale a unit’s incoming weights and bias by α and its outgoing weights by 1/α → same function; every minimum lies on an (m×n)-dimensional hyperbola of equivalent minima (unless weight decay breaks it).</li></ul></li>
+          <li>These minima have <b>equal cost</b> → not a problematic non-convexity.</li>
+          <li>Experts now suspect that for sufficiently large networks most local minima have <b>low cost</b>; finding a low-but-not-minimal point is good enough.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Identifiable</dt><dd>Enough data pins down a single parameter setting.</dd>
+        <dt>Latent variables</dt><dd>Hidden quantities (here: hidden units) that can be relabelled.</dd>
+        <dt>n!</dt><dd>n factorial: number of ways to order n items.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>2 hidden layers × 4 units: \((4!)^2=24^2=576\) equivalent arrangements of every solution.</li>
+        <li>2 layers × 100 units: \((100!)^2\approx10^{316}\).</li>
+        <li>ReLU scaling: unit input z = 2. Multiply incoming weights by α = 3 → z = 6, ReLU = 6; outgoing weight ÷ 3 → contribution 6/3 = 2: unchanged.</li>
+      </ol></div>
+    </div>
+    <div data-widget="weightSymmetry"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch04-3.html#/s-critical">Local vs. global minima (L3)</a>.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch08-3.html#/s-init">Breaking symmetry with random initialization (L8)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-saddle" data-part="Part 2 · Challenges (8.2)" data-title="Saddle points & plateaus" data-stages="update">
+  <div class="slide-head"><span class="kicker">8.2.3 · Plateaus, saddle points and other flat regions</span><h2>Saddle points and flat regions</h2><div class="stages"></div></div>
+  <p class="bigidea">In high dimensions, critical points are mostly <b>saddle points</b>, not minima: being a minimum needs <b>every</b> eigenvalue positive, which is exponentially unlikely. Gradient descent usually escapes saddles; <b>Newton’s method is attracted</b> to them.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>At a saddle the Hessian has positive <b>and</b> negative eigenvalues: a minimum along one cross-section, a maximum along another.</li>
+          <li>For many random functions of n variables: local minima common in low dimensions, rare in high dimensions; the ratio of saddles to minima grows <b>exponentially with n</b>.</li>
+          <li>Hessian eigenvalues become more likely positive at <b>lower cost</b> → local minima tend to have low cost; high-cost critical points are mostly saddles; extremely high-cost ones tend to be maxima.</li>
+          <li>Gradient-only methods: the gradient can get very small near a saddle, but empirically gradient descent escapes in many cases.</li>
+          <li>Newton’s method solves for gradient = 0 and can jump <b>to</b> a saddle — one reason second-order methods haven’t replaced gradient descent for neural nets.</li>
+          <li>Wide <b>flat regions</b> (plateaus) with zero gradient and Hessian are also hard for all methods.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Saddle point</dt><dd>Critical point with mixed-sign Hessian eigenvalues.</dd>
+        <dt>Plateau</dt><dd>A wide region where the loss is nearly constant.</dd>
+        <dt>Random function</dt><dd>A mathematical model of a “typical” high-dimensional landscape.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Coin-flip model: each of n eigenvalue signs is + with probability ½.</li>
+        <li>P(minimum) = P(all +) = \(2^{-n}\): n = 2 → 0.25; n = 10 → 0.001; n = 1 000 → \(10^{-301}\).</li>
+        <li>So a random critical point in 10 dimensions is a saddle ~99.8% of the time (excluding maxima, also \(2^{-n}\)).</li>
+      </ol></div>
+    </div>
+    <div data-widget="eigenSign"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag fwd">Leads to</span><span><a href="ch08-6.html#/s-saddle">Newton at saddle points, with a live demo (L9)</a>.</span></li>
+    <li><span class="tag back">Builds on</span><span><a href="ch04-3.html#/s-critical">Second-derivative test (L3)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-cliffs" data-part="Part 2 · Challenges (8.2)" data-title="Cliffs & exploding gradients" data-stages="backward,update">
+  <div class="slide-head"><span class="kicker">8.2.4 · Cliffs and exploding gradients</span><h2>Cliffs and exploding gradients</h2><div class="stages"></div></div>
+  <p class="bigidea">Multiplying several large weights creates <b>cliffs</b>: extremely steep walls where one gradient step jumps the parameters far away. <b>Gradient clipping</b> caps the step so we stay where the gradient is meaningful.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \text{if }\|\mathbf g\|&gt;v:\quad\mathbf g\leftarrow\frac{\mathbf g\,v}{\|\mathbf g\|} \]<span class="eqno">norm clipping (details in L11)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Deep networks often have extremely steep regions resembling cliffs, from the multiplication of several large weights.</li>
+          <li>On a cliff face the gradient update can move the parameters extremely far, usually jumping off the structure — dangerous approached from above or below.</li>
+          <li>The gradient gives a <b>direction</b> only locally; when gradient descent proposes a huge step, clipping reduces it so we don’t leave the region where the gradient is approximately the steepest-descent direction.</li>
+          <li>Most common in <b>recurrent networks</b>: one multiplication per time step → long sequences = extreme multiplication.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Cliff</dt><dd>A region where the loss changes extremely fast.</dd>
+        <dt>Exploding gradient</dt><dd>A gradient so large that one step is catastrophic.</dd>
+        <dt>Clipping threshold v</dt><dd>Maximum allowed gradient norm.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Five weights of 3 multiplied together: \(3^5=243\) — small changes are amplified hugely.</li>
+        <li>Gradient g = (300, 400), ‖g‖ = 500, threshold v = 5 → g ← (300, 400) × 5/500 = (3, 4).</li>
+        <li>Same direction, length 5 instead of 500: with ε = 0.1 the step is 0.5 instead of 50.</li>
+      </ol></div>
+    </div>
+    <div data-widget="cliffClip"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag fwd">Leads to</span><span><a href="ch10.html#/s-clip">Gradient clipping in RNNs (L11)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-longterm" data-part="Part 2 · Challenges (8.2)" data-title="Long-term dependencies" data-stages="backward">
+  <div class="slide-head"><span class="kicker">8.2.5 · Long-term dependencies</span><h2>Long-term dependencies: vanishing and exploding gradients</h2><div class="stages"></div></div>
+  <p class="bigidea">A path that multiplies by the same matrix W again and again scales each eigen-direction by <b>λᵗ</b>. Eigenvalues below 1 make gradients <b>vanish</b>; above 1 make them <b>explode</b>.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mathbf W^{t}=\big(\mathbf V\,\text{diag}(\boldsymbol\lambda)\,\mathbf V^{-1}\big)^{t}=\mathbf V\,\text{diag}(\boldsymbol\lambda)^{t}\,\mathbf V^{-1} \]<span class="eqno">(8.11)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Extremely deep computational graphs: deep feedforward nets, and especially <b>recurrent</b> nets that apply the same parameters at every step.</li>
+          <li>With W’s eigendecomposition, the middle factors \(\mathbf V^{-1}\mathbf V\) cancel, leaving \(\text{diag}(\boldsymbol\lambda)^t\).</li>
+          <li><b>Vanishing</b>: impossible to know which direction improves the cost. <b>Exploding</b>: learning becomes unstable — the cliffs of the previous slide.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Eigendecomposition</dt><dd>W = V diag(λ) V⁻¹: directions V that W only stretches, by factors λ.</dd>
+        <dt>Vanishing gradient</dt><dd>Gradient shrinks exponentially with depth/time.</dd>
+        <dt>Exploding gradient</dt><dd>Gradient grows exponentially with depth/time.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>λ = 0.9 after 50 steps: \(0.9^{50}=0.0052\) — the signal from 50 steps ago is 200× weaker.</li>
+        <li>λ = 1.1 after 50 steps: \(1.1^{50}=117\) — it is 117× stronger.</li>
+        <li>Only |λ| ≈ 1 keeps information over long ranges: \(1.0^{50}=1\).</li>
+      </ol></div>
+    </div>
+    <div data-widget="powerEigen"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch06-5.html#/s-chain">Products of Jacobians in backprop (L5)</a>.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch10.html#/s-longterm">The challenge of long-term dependencies in RNNs (L11)</a>, <a href="ch10.html#/s-lstm">LSTMs (L11)</a>, <a href="ch08-6.html#/s-design">skip connections (L9)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-inexact" data-part="Part 2 · Challenges (8.2)" data-title="Inexact gradients" data-stages="batch">
+  <div class="slide-head"><span class="kicker">8.2.6 · Inexact gradients</span><h2>Inexact gradients</h2><div class="stages"></div></div>
+  <p class="bigidea">Optimization theory assumes exact gradients; in practice we only have <b>noisy</b> (minibatch) or even <b>biased</b> estimates — and sometimes the objective itself is intractable.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Most algorithms are designed assuming the exact gradient or Hessian; we usually have a noisy or biased estimate.</li>
+          <li>Sometimes the objective we want is intractable — then its gradient is too, and we can only approximate it.</li>
+          <li>Remedies: algorithms designed to tolerate imperfect gradients, or a <b>surrogate loss</b> that is easier to approximate.</li>
+          <li>Noise (variance) makes the iterates wander around the solution; bias makes them converge to the <b>wrong</b> point.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Noisy (unbiased) estimate</dt><dd>Right on average, wrong each time.</dd>
+        <dt>Biased estimate</dt><dd>Systematically off in one direction.</dd>
+        <dt>Intractable objective</dt><dd>Too expensive to compute exactly (e.g. some probabilistic models).</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Minimize \(f(x)=\frac12x^2\) (true gradient x) with a biased estimate \(x-0.5\).</li>
+        <li>Iterations stop where the estimate is 0: \(x-0.5=0\Rightarrow x=0.5\), not the true minimum 0.</li>
+        <li>With unbiased noise of std 1 and step ε = 0.1, iterates jitter around 0 with spread ≈ \(\sqrt{\epsilon/2}\approx0.22\).</li>
+      </ol></div>
+    </div>
+    <div data-widget="noisyGD"></div>
+  </div>
+</section>
+
+<section class="slide" id="s-local-global" data-part="Part 2 · Challenges (8.2)" data-title="Local vs. global structure" data-stages="init,loss">
+  <div class="slide-head"><span class="kicker">8.2.7 · Poor correspondence between local and global structure</span><h2>When the local slope points the wrong way</h2><div class="stages"></div></div>
+  <p class="bigidea">Even with no local minima or saddles, training can fail if the locally best direction does <b>not lead toward</b> distant regions of low cost. Much of training time is the <b>length of the trajectory</b>. Starting in a well-behaved region is the best cure.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Everything so far was about properties at a single point; you can fix all of them and still fail.</li>
+          <li>In practice, neural nets <b>don’t arrive at a critical point of any kind</b> — such points may not even exist. Softmax NLL can only approach 0; a Gaussian model with learned precision β has NLL → −∞ if the mean is perfect.</li>
+          <li>Being initialized on the wrong side of a “mountain”: in high dimensions you can usually go around it, but the trajectory may be long.</li>
+          <li>Even with a good path, we may not follow it: gradients are approximate (bias/variance); poor conditioning or discontinuities make the region where the gradient is trustworthy tiny, so steps must be small → many steps.</li>
+          <li>Sometimes local information gives <b>no</b> guide (wide flat regions, or landing exactly on a critical point with Newton), or is too <b>greedy</b> (downhill but away from any solution).</li>
+          <li>All might be avoided by initializing in a region <b>connected directly</b> to a solution by a path local descent can follow → research on good initial points.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Global structure</dt><dd>The overall shape of the landscape, far from the current point.</dd>
+        <dt>Trajectory length</dt><dd>Total distance the parameters travel during training.</dd>
+        <dt>Precision β</dt><dd>1/variance of a Gaussian output.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Softmax NLL with margin d between correct and wrong logit: \(\log(1+e^{-d})\): d = 5 → 0.0067; d = 10 → 0.000045; never exactly 0 → no minimum, the weights keep growing.</li>
+        <li>Gaussian NLL \(\frac12\beta(y-\hat y)^2-\frac12\log\beta+c\): if \(\hat y=y\) exactly, it is \(-\frac12\log\beta\to-\infty\) as β grows.</li>
+      </ol></div>
+    </div>
+    <div data-widget="wrongSide"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag fwd">Leads to</span><span><a href="ch08-3.html#/s-init">Initialization strategies (L8)</a>, <a href="ch08-6.html#/s-pretrain">pretraining (L9)</a> and <a href="ch08-6.html#/s-continuation">continuation methods (L9)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-limits" data-part="Part 2 · Challenges (8.2)" data-title="Theoretical limits" data-stages="final">
+  <div class="slide-head"><span class="kicker">8.2.8 · Theoretical limits of optimization</span><h2>Theoretical limits of optimization</h2><div class="stages"></div></div>
+  <p class="bigidea">Theorems show that some network-training problems are intractable — but they have <b>little bearing on practice</b>: real units are smooth, and a <b>larger network</b> makes acceptable solutions much easier to find.</p>
+  <div class="row2">
+    <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+      <ul>
+        <li>Some results only apply to units with <b>discrete</b> outputs; most real units are smooth, so local search works.</li>
+        <li>Some show <b>intractable problem classes</b> exist — but it’s hard to tell if a given problem is in one.</li>
+        <li>Some show finding a solution for a network of a <b>given size</b> is intractable — yet a <b>larger</b> network, where many more parameter settings are acceptable, often finds one easily.</li>
+        <li>We don’t need the exact minimum — just a value low enough to <b>generalize</b> well. Analysing whether an algorithm achieves that is very hard; realistic bounds remain an open research goal.</li>
+      </ul>
+    </div>
+    <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+      <li>XOR with exactly 2 hidden ReLU units: the earlier demo (L4) solved it in only ~3 of 10 random starts.</li>
+      <li>With 8 hidden units, almost every random start reaches zero error: many more parameter settings are solutions.</li>
+      <li>Over-parametrizing makes optimization <b>easier</b>, and regularization (L6) controls the extra capacity.</li>
+    </ol></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch06-1.html#/s-gbl">Sensitivity to initialization on XOR (L4)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-summary" data-part="Wrap-up" data-title="Summary: how it all connects" data-stages="batch,loss,backward,update,final">
+  <div class="slide-head"><span class="kicker">Wrap-up</span><h2>Summary: how it all connects</h2><div class="stages"></div></div>
+  <p class="bigidea">We optimize a <b>surrogate</b> of an <b>empirical</b> risk with <b>noisy</b> gradients and stop <b>early</b>. The landscape adds ill-conditioning, saddles, cliffs, vanishing/exploding products and misleading local slopes.</p>
+  <div class="card" style="padding:0;overflow:hidden"><div class="scroll-x"><table class="data-table">
+    <thead><tr><th>Challenge</th><th>Symptom</th><th>Key formula / fact</th><th>Remedy (lecture)</th></tr></thead>
+    <tbody>
+      <tr><td>Empirical risk</td><td>overfitting</td><td>(1/m)Σ L ≠ J*</td><td>regularization (L6)</td></tr>
+      <tr><td>Surrogate loss</td><td>0-1 loss has no gradient</td><td>NLL as proxy</td><td>early stopping on true loss (L6)</td></tr>
+      <tr><td>Minibatch noise</td><td>noisy steps</td><td>SE = σ/√n</td><td>LR decay, momentum (L8)</td></tr>
+      <tr><td>Ill-conditioning</td><td>slow despite big gradient</td><td>½ε²gᵀHg &gt; εgᵀg</td><td>momentum, Adam (L8), Newton-like (L9)</td></tr>
+      <tr><td>Local minima</td><td>mostly equivalent</td><td>n!^m symmetries</td><td>big networks</td></tr>
+      <tr><td>Saddle points</td><td>small gradient, Newton trapped</td><td>P(min) ≈ 2⁻ⁿ</td><td>first-order methods; regularized Newton (L9)</td></tr>
+      <tr><td>Cliffs</td><td>huge jumps</td><td>products of large weights</td><td>gradient clipping (L11)</td></tr>
+      <tr><td>Long-term dependencies</td><td>vanish / explode</td><td>Wᵗ = V diag(λ)ᵗ V⁻¹</td><td>LSTM, skip connections (L9, L11)</td></tr>
+      <tr><td>Local ≠ global</td><td>long or wrong trajectories</td><td>no critical point reached</td><td>initialization, pretraining, continuation (L8, L9)</td></tr>
+    </tbody>
+  </table></div></div>
+  <div class="row3" style="margin-top:16px">
+    <div class="card plain"><h3><span class="dot"></span>Remember</h3><p>High-dimensional landscapes: saddles, not minima, are the typical critical points.</p></div>
+    <div class="card plain"><h3><span class="dot"></span>Next lecture</h3><p><a href="ch08-3.html">Optimization II</a>: the algorithms that cope with these problems — momentum, AdaGrad, RMSProp, Adam — and how to initialize.</p></div>
+    <div class="card fit"><h3><span class="dot"></span>Check yourself</h3><p>Eleven quiz questions with explanations.</p><button class="btn primary" type="button" data-goto="s-quiz" style="margin-top:6px">Take the quiz →</button></div>
+  </div>
+</section>
+
+<section class="slide" id="s-quiz" data-part="Wrap-up" data-title="Check yourself (quiz)">
+  <div class="slide-head"><span class="kicker">Wrap-up</span><h2>Check yourself</h2><p class="lede">Pick an answer to see whether it is right and why.</p></div>
+  <div data-widget="quiz"></div>
+  <footer class="credits">Study notes for Deep Learning, chapter 8.1–8.2. Equation numbers follow Goodfellow, Bengio &amp; Courville, <em>Deep Learning</em> (MIT Press, 2016). Explanations, diagrams and demos are original.</footer>
+</section>
+
+</main>
+</body>
+</html>
