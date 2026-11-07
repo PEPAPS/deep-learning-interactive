@@ -1,0 +1,620 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recurrent Neural Networks</title>
+<meta name="description" content="Interactive notes for Deep Learning chapter 10: unfolding computational graphs, RNN design patterns, forward propagation, teacher forcing, back-propagation through time, bidirectional, deep and recursive networks, long-term dependencies, echo state networks, leaky units, LSTM, GRU, gradient clipping and information-flow regularization.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232a78d6'/%3E%3Cpath d='M6 9c5 0 6 14 10 14s5-14 10-14' fill='none' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<link rel="stylesheet" href="../css/style.css?v=14">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script defer src="../js/core.js?v=14"></script>
+<script defer src="../js/course.js?v=14"></script>
+<script defer src="../js/quiz.js?v=14"></script>
+<script defer src="../js/lectures/ch10.js?v=14"></script>
+</head>
+<body data-page="lecture" data-lecture="ch10">
+<script>
+window.TOPICS = {
+  data: [['s-seq', 'Sequences of variable length']],
+  init: [['s-esn', 'Set recurrent weights near the edge of stability'], ['s-lstm', 'Forget-gate bias = 1']],
+  forward: [['s-unfold', 'Unfold the recurrence'], ['s-forward', 'Forward equations (10.8–10.11)'], ['s-birnn', 'Bidirectional RNN'], ['s-deep-rnn', 'Deep RNN'], ['s-recursive', 'Recursive (tree) nets'], ['s-lstm', 'LSTM cell'], ['s-gru', 'GRU']],
+  loss: [['s-forward', 'Sum of per-step losses'], ['s-teacher', 'Teacher forcing']],
+  backward: [['s-bptt', 'Back-propagation through time'], ['s-longterm', 'Vanishing / exploding gradients'], ['s-info-flow', 'Encourage information flow']],
+  update: [['s-clip', 'Clip the gradient before the update']],
+  final: [['s-teacher', 'Free-running generation at test time']]
+};
+</script>
+
+<main class="deck" id="deck">
+
+<section class="slide" id="s-title" data-part="Start here" data-title="Welcome: networks with memory">
+  <div class="slide-head">
+    <span class="kicker">Lecture 11 · Chapter 10</span>
+    <h1>Sequence Modeling: Recurrent and Recursive Nets</h1>
+    <p class="lede">A recurrent neural network (RNN) reads a sequence one step at a time, keeping a <b>state</b> that summarizes what it has seen, and uses the <b>same parameters at every step</b>. That makes it work for any sequence length — and creates the famous problem of <b>long-term dependencies</b>, which gated units like the <b>LSTM</b> solve.</p>
+  </div>
+  <div class="road">
+    <div class="card big"><span class="kicker">Part 1 · 10.1 – 10.2</span><h4>RNN basics</h4><ol><li>Sharing across time, unfolding</li><li>Design patterns and forward equations</li><li>Teacher forcing, BPTT</li></ol><button class="btn primary go" type="button" data-goto="s-seq">Start →</button></div>
+    <div class="card big"><span class="kicker">Part 2 · 10.3 – 10.6</span><h4>Architectures</h4><ol><li>Bidirectional RNNs</li><li>Deep RNNs</li><li>Recursive (tree) networks</li></ol><button class="btn primary go" type="button" data-goto="s-birnn">Jump →</button></div>
+    <div class="card big"><span class="kicker">Part 3 · 10.7 – 10.11</span><h4>Long-term dependencies</h4><ol><li>Why gradients vanish/explode</li><li>Echo state nets, leaky units</li><li>LSTM, GRU, clipping, information flow</li></ol><button class="btn primary go" type="button" data-goto="s-longterm">Jump →</button></div>
+  </div>
+</section>
+
+<section class="slide" id="s-loop" data-part="Start here" data-title="Where this lecture fits" data-stages="data,forward,loss,backward,update">
+  <div class="slide-head"><span class="kicker">Start here</span><h2>Where RNNs fit in training</h2><div class="stages"></div></div>
+  <p class="bigidea">The loop is the same, but the forward pass now runs <b>through time</b>, the loss is a <b>sum over time steps</b>, and back-propagation becomes <b>back-propagation through time</b>. The long chain through time is where gradients vanish or explode.</p>
+  <div class="stack"><div data-widget="loop"></div>
+    <div class="row3">
+      <div class="card plain"><h3><span class="dot"></span>From L10 (CNNs)</h3><p>Share parameters across <b>space</b>. RNNs share them across <b>time</b>.</p></div>
+      <div class="card plain"><h3><span class="dot"></span>From L5 and L7</h3><p>Back-prop on the unrolled graph; long products of Jacobians cause vanishing/exploding gradients and cliffs.</p></div>
+      <div class="card plain"><h3><span class="dot"></span>New here</h3><p>Teacher forcing, BPTT, bidirectional/deep/recursive nets, echo state nets, leaky units, LSTM/GRU, clipping.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-seq" data-part="Part 1 · RNN basics (10.1–10.2)" data-title="Sharing parameters across time" data-stages="data,forward">
+  <div class="slide-head"><span class="kicker">10 · Recurrent neural networks</span><h2>Sharing parameters across time</h2><div class="stages"></div></div>
+  <p class="bigidea">An RNN processes a sequence \(\mathbf x^{(1)},\dots,\mathbf x^{(\tau)}\) with the <b>same weights at every time step</b>. So it can handle sequences of <b>any length</b>, and something learned at one position (“2009 is a year”) works at every position.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>RNNs specialize in sequences; they scale to much longer sequences than non-specialized networks, and most handle variable lengths.</li>
+          <li>With separate parameters per time index, we could not generalize to unseen lengths, nor share statistical strength across lengths and positions.</li>
+          <li>“I went to Nepal in 2009” vs “In 2009, I went to Nepal”: the year is word 6 or word 2. A fully connected net would learn all language rules separately at each position.</li>
+          <li><b>1-D convolution over time</b> also shares parameters, but is <b>shallow</b>: each output depends on a few neighbours. <b>Recurrence</b> produces each output with the same update rule applied to the previous outputs → sharing through a <b>very deep</b> graph.</li>
+          <li>t need not be real time — just the position. RNNs can even run over 2-D images, or backward in time if the whole sequence is observed first.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>\(\mathbf x^{(t)}\)</dt><dd>The input vector at time step t (t = 1 … τ).</dd>
+        <dt>τ (tau)</dt><dd>Sequence length.</dd>
+        <dt>Time step</dt><dd>Position in the sequence.</dd>
+        <dt>Statistical strength</dt><dd>Evidence pooled from many examples/positions to estimate shared parameters.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Word vectors of size 50, 100 hidden units, sentences of 6 words.</li>
+        <li>Separate weights per position: 6 × 50 × 100 = 30 000 — and a 7-word sentence has no weights for word 7.</li>
+        <li>RNN: U (50 × 100) + W (100 × 100) = 15 000, for every length.</li>
+      </ol></div>
+    </div>
+    <div data-widget="sharingTime"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag same">Compare</span><span><a href="ch09.html#/s-sharing">Parameter sharing in CNNs (L10)</a> and <a href="ch09.html#/s-data-types">variable-size inputs (L10)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-unfold" data-part="Part 1 · RNN basics (10.1–10.2)" data-title="Unfolding computational graphs" data-stages="forward">
+  <div class="slide-head"><span class="kicker">10.1 · Unfolding computational graphs</span><h2>Unfolding: from a loop to a deep chain</h2><div class="stages"></div></div>
+  <p class="bigidea">A recurrence \(\mathbf h^{(t)}=f(\mathbf h^{(t-1)},\mathbf x^{(t)};\boldsymbol\theta)\) can be <b>unfolded</b>: write out one copy of f per time step. The result is an ordinary (acyclic) computational graph — deep, but with the <b>same θ</b> in every copy.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mathbf s^{(t)}=f(\mathbf s^{(t-1)};\boldsymbol\theta) \]<span class="eqno">(10.1)</span>
+        \[ \mathbf s^{(3)}=f(\mathbf s^{(2)};\boldsymbol\theta)=f\big(f(\mathbf s^{(1)};\boldsymbol\theta);\boldsymbol\theta\big) \]<span class="eqno">(10.2–10.3)</span>
+        \[ \mathbf h^{(t)}=f(\mathbf h^{(t-1)},\mathbf x^{(t)};\boldsymbol\theta) \]<span class="eqno">(10.4–10.5)</span>
+        \[ \mathbf h^{(t)}=g^{(t)}(\mathbf x^{(t)},\mathbf x^{(t-1)},\dots,\mathbf x^{(1)})=f(\mathbf h^{(t-1)},\mathbf x^{(t)};\boldsymbol\theta) \]<span class="eqno">(10.6–10.7)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>s is the <b>state</b> of a dynamical system; 10.1 is recurrent because s(t) is defined using s(t−1). Unfolding for τ steps removes the recurrence.</li>
+          <li>With an external input x(t), the state contains information about the <b>whole past</b>. When the state is the network’s hidden units we call it h.</li>
+          <li>h(t) is a <b>lossy summary</b> of the past: an arbitrary-length history squeezed into a fixed-length vector. Training decides what to keep (language model: just enough to predict the next words; autoencoder: enough to recover the input).</li>
+          <li>Two drawings: the <b>circuit</b> (compact, with a black square = one-step delay) and the <b>unfolded graph</b> (one node per variable per time step; explicit about computations and information flow).</li>
+          <li>Two advantages: (1) the model always has the <b>same input size</b> (a transition from one state to the next); (2) the <b>same f</b> with the same parameters is used at every step → generalizes to unseen lengths with far fewer training examples.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Dynamical system</dt><dd>Something whose state changes over time by a fixed rule.</dd>
+        <dt>Unfolding (unrolling)</dt><dd>Mapping the circuit to a graph with one copy per time step.</dd>
+        <dt>\(g^{(t)}\)</dt><dd>The function from the whole past input sequence to h(t), factorized into repeated f.</dd>
+        <dt>Lossy summary</dt><dd>A compressed description that cannot keep everything.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>h(t) = tanh(0.8·h(t−1) + 1·x(t)), h(0) = 0, x = (1, 0, 0).</li>
+        <li>h(1) = tanh(0 + 1) = 0.762.</li>
+        <li>h(2) = tanh(0.8 × 0.762 + 0) = tanh(0.609) = 0.544.</li>
+        <li>h(3) = tanh(0.8 × 0.544) = tanh(0.435) = 0.410 — the memory of x(1) fades.</li>
+      </ol></div>
+    </div>
+    <div data-widget="unfoldDemo"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch06-5.html#/s-graph">Computational graphs (L5)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-rnn-designs" data-part="Part 1 · RNN basics (10.1–10.2)" data-title="RNN design patterns" data-stages="forward">
+  <div class="slide-head"><span class="kicker">10.2 · Recurrent neural networks</span><h2>Three important design patterns</h2><div class="stages"></div></div>
+  <p class="bigidea">Choose <b>what is recurrent</b> (hidden → hidden, or output → hidden) and <b>where outputs appear</b> (every step, or once at the end). The choice trades power against how easily the network can be trained.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ol class="steps">
+          <li><b>Figure 10.3</b>: an output at every step, recurrent connections between hidden units. Very powerful (any function computable by a Turing machine), but expensive to train.</li>
+          <li><b>Figure 10.4</b>: an output at every step, recurrence only from the output to the next hidden units. Less powerful — the output must carry all needed information about the past — but trainable in parallel with <b>teacher forcing</b>.</li>
+          <li><b>Figure 10.5</b>: recurrent hidden units read the whole sequence, then produce <b>one</b> output (e.g. classify a sentence).</li>
+        </ol>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>U, W, V</dt><dd>Input→hidden, hidden→hidden (or output→hidden), hidden→output weight matrices.</dd>
+        <dt>o, L, y</dt><dd>Output, loss and target at a time step.</dd>
+        <dt>Sequence-to-one</dt><dd>Many inputs, a single output.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Sentence of τ = 20 words, pattern 10.3: 20 outputs and 20 losses; training must go through all 20 steps sequentially.</li>
+        <li>Pattern 10.4 with teacher forcing: the 20 losses can be computed at the same time (each uses the true previous output).</li>
+        <li>Pattern 10.5: 1 output, 1 loss, gradient travels back 20 steps.</li>
+      </ol></div>
+    </div>
+    <div data-widget="rnnPatterns"></div>
+  </div>
+</section>
+
+<section class="slide" id="s-forward" data-part="Part 1 · RNN basics (10.1–10.2)" data-title="Forward propagation & the loss" data-stages="forward,loss">
+  <div class="slide-head"><span class="kicker">10.2 · Forward propagation</span><h2>Forward propagation and the loss</h2><div class="stages"></div></div>
+  <p class="bigidea">Start from h(0); for t = 1 … τ apply the same four equations. The total loss is the <b>sum of the per-step losses</b> — for words, the negative log-likelihood of each target given the inputs so far.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mathbf a^{(t)}=\mathbf b+\mathbf W\mathbf h^{(t-1)}+\mathbf U\mathbf x^{(t)},\qquad \mathbf h^{(t)}=\tanh(\mathbf a^{(t)}) \]<span class="eqno">(10.8–10.9)</span>
+        \[ \mathbf o^{(t)}=\mathbf c+\mathbf V\mathbf h^{(t)},\qquad \hat{\mathbf y}^{(t)}=\operatorname{softmax}(\mathbf o^{(t)}) \]<span class="eqno">(10.10–10.11)</span>
+        \[ L=\sum_tL^{(t)}=-\sum_t\log p_{\text{model}}\big(y^{(t)}\mid\mathbf x^{(1)},\dots,\mathbf x^{(t)}\big) \]<span class="eqno">(10.12–10.14)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>tanh hidden units; discrete outputs (e.g. words): o holds <b>unnormalized log probabilities</b>, softmax turns them into probabilities ŷ.</li>
+          <li>Parameters: biases b, c and matrices U (input→hidden), V (hidden→output), W (hidden→hidden) — the same at every step.</li>
+          <li>p_model(y(t) | …) is read from the entry of ŷ(t) for the correct y(t).</li>
+          <li>Computing the gradient: a forward pass, then a backward pass. Runtime <b>O(τ)</b> that cannot be parallelized (each step needs the previous one), memory <b>O(τ)</b> (all states are stored). This is <b>back-propagation through time (BPTT)</b>.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>a(t)</dt><dd>Pre-activation of the hidden units.</dd>
+        <dt>o(t)</dt><dd>Output scores (logits).</dd>
+        <dt>ŷ(t)</dt><dd>Predicted probabilities over the vocabulary.</dd>
+        <dt>Negative log-likelihood</dt><dd>−log of the probability given to the correct answer.</dd>
+        <dt>One-hot</dt><dd>A vector with a single 1 marking a symbol (so Ux picks one column of U).</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>t = 1, input “a” → U x = (1.0, −0.5); h(0) = 0 → a = (1.0, −0.5).</li>
+        <li>h = tanh(a) = (0.762, −0.462).</li>
+        <li>o = V h = (1.224, −1.455, 0.150) → softmax: e^o = (3.40, 0.23, 1.16), sum 4.79 → ŷ = (0.709, 0.049, 0.242).</li>
+        <li>Target “b”: L(1) = −log 0.049 = 3.02 (the untrained net is wrong).</li>
+      </ol></div>
+    </div>
+    <div data-widget="rnnForward"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch06-1.html#/s-softmax">Softmax output units (L4)</a>, <a href="ch06-1.html#/s-cost-mle">cross-entropy from maximum likelihood (L4)</a>, <a href="ch06-1.html#/s-sigmoid-tanh">tanh (L4)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-teacher" data-part="Part 1 · RNN basics (10.1–10.2)" data-title="Teacher forcing" data-stages="loss,final">
+  <div class="slide-head"><span class="kicker">10.2.1 · Teacher forcing and networks with output recurrence</span><h2>Teacher forcing</h2><div class="stages"></div></div>
+  <p class="bigidea">If the only recurrence goes from the <b>output</b> to the next step, maximum likelihood says: during training feed the <b>true</b> output y(t) (not the model’s guess) into step t + 1. The time steps then <b>decouple</b> and can be trained in parallel.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \log p\big(\mathbf y^{(1)},\mathbf y^{(2)}\mid\mathbf x^{(1)},\mathbf x^{(2)}\big) \]
+        \[ =\log p\big(\mathbf y^{(2)}\mid\mathbf y^{(1)},\mathbf x^{(1)},\mathbf x^{(2)}\big)+\log p\big(\mathbf y^{(1)}\mid\mathbf x^{(1)},\mathbf x^{(2)}\big) \]<span class="eqno">(10.15–10.16)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Removing hidden-to-hidden recurrence (figure 10.4) makes the model strictly less powerful: the outputs, trained to match targets, rarely capture the needed history unless the targets describe the full state.</li>
+          <li>Benefit: for losses comparing prediction and target at each time t, all time steps are decoupled → <b>parallel</b> training, each step’s gradient computed in isolation.</li>
+          <li>At t = 2 the model maximizes the probability of y(2) given the x’s so far <b>and the true y(1)</b> from the training set.</li>
+          <li>Teacher forcing avoids BPTT only when there are no hidden-to-hidden connections; with them, BPTT is still needed (models can use both).</li>
+          <li>Book note: if the network is later used <b>open-loop</b> (its own outputs fed back), the inputs it sees at test time can differ from training — errors can compound (see the demo).</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Teacher forcing</dt><dd>Training with the ground-truth previous output as the next input.</dd>
+        <dt>Output recurrence</dt><dd>Connections from o(t) (or y(t)) to step t + 1.</dd>
+        <dt>Open-loop / free running</dt><dd>Generating with the model’s own outputs fed back in.</dd>
+        <dt>Conditional maximum likelihood</dt><dd>Maximize p(outputs | inputs) on the training data.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Suppose p(y(1) | x) = 0.8 and p(y(2) | true y(1), x) = 0.5.</li>
+        <li>log p(y(1), y(2) | x) = log 0.5 + log 0.8 = −0.693 − 0.223 = −0.916.</li>
+        <li>Each term only needs the true y(1), not the model’s prediction, so both can be computed at once.</li>
+      </ol></div>
+    </div>
+    <div data-widget="teacherForcing"></div>
+  </div>
+</section>
+
+<section class="slide" id="s-bptt" data-part="Part 1 · RNN basics (10.1–10.2)" data-title="Back-propagation through time" data-stages="backward">
+  <div class="slide-head"><span class="kicker">10.2.2 · Computing the gradient in an RNN</span><h2>Back-propagation through time (BPTT)</h2><div class="stages"></div></div>
+  <p class="bigidea">Just apply ordinary back-propagation to the <b>unrolled graph</b>, from the last time step backward. Each h(t) receives gradient from its own output <b>and</b> from h(t+1); a shared parameter’s gradient is the <b>sum</b> over all time steps.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ (\nabla_{\mathbf o^{(t)}}L)_i=\hat y^{(t)}_i-\mathbf 1_{i=y^{(t)}},\qquad \nabla_{\mathbf h^{(\tau)}}L=\mathbf V^{\top}\nabla_{\mathbf o^{(\tau)}}L \]<span class="eqno">(10.18–10.19)</span>
+        \[ \nabla_{\mathbf h^{(t)}}L=\mathbf W^{\top}\operatorname{diag}\big(1-(\mathbf h^{(t+1)})^2\big)\,\nabla_{\mathbf h^{(t+1)}}L+\mathbf V^{\top}\nabla_{\mathbf o^{(t)}}L \]<span class="eqno">(10.20–10.21)</span>
+        \[ \nabla_{\mathbf c}L=\sum_t\nabla_{\mathbf o^{(t)}}L,\qquad \nabla_{\mathbf b}L=\sum_t\operatorname{diag}\big(1-(\mathbf h^{(t)})^2\big)\nabla_{\mathbf h^{(t)}}L \]<span class="eqno">(10.22–10.23)</span>
+        \[ \nabla_{\mathbf V}L=\sum_t(\nabla_{\mathbf o^{(t)}}L)\,\mathbf h^{(t)\top} \]<span class="eqno">(10.24)</span>
+        \[ \nabla_{\mathbf W}L=\sum_t\operatorname{diag}\big(1-(\mathbf h^{(t)})^2\big)(\nabla_{\mathbf h^{(t)}}L)\,\mathbf h^{(t-1)\top} \]<span class="eqno">(10.25–10.26)</span>
+        \[ \nabla_{\mathbf U}L=\sum_t\operatorname{diag}\big(1-(\mathbf h^{(t)})^2\big)(\nabla_{\mathbf h^{(t)}}L)\,\mathbf x^{(t)\top} \]<span class="eqno">(10.27–10.28)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>No special algorithm: the generalized back-prop of L5 on the unrolled graph; the result works with any gradient-based optimizer.</li>
+          <li>Start at the end: h(τ) only feeds o(τ). Earlier h(t) feed both o(t) and h(t+1) → two terms.</li>
+          <li>\(\operatorname{diag}(1-(\mathbf h^{(t+1)})^2)\) is the Jacobian of tanh at step t + 1.</li>
+          <li>Because W is used at every step, define dummy copies W(t) used only at step t; ∇_W L sums their contributions. x(t) needs no gradient (no parameters above it).</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>BPTT</dt><dd>Back-propagation applied to the graph unrolled through time.</dd>
+        <dt>\(\mathbf 1_{i=y}\)</dt><dd>1 for the correct class, 0 otherwise.</dd>
+        <dt>diag(v)</dt><dd>A diagonal matrix with the vector v on its diagonal.</dd>
+        <dt>W(t)</dt><dd>A dummy copy of W used only at time t, to count each step’s contribution.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Scalar RNN, τ = 2, w = 0.5, u = v = 1, x = (1, 0), loss ½o(2)² at the end only.</li>
+        <li>Forward: h(1) = tanh(1) = 0.762; h(2) = tanh(0.5 × 0.762) = 0.363; o(2) = 0.363.</li>
+        <li>Backward: ∂L/∂h(2) = v·o(2) = 0.363; ∂L/∂h(1) = w(1 − h(2)²)·0.363 = 0.5 × 0.868 × 0.363 = 0.158.</li>
+        <li>∂L/∂w = (1 − h(2)²)·0.363·h(1) + (1 − h(1)²)·0.158·h(0) = 0.868 × 0.363 × 0.762 + 0 = 0.240.</li>
+      </ol></div>
+    </div>
+    <div data-widget="bpttDemo"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch06-5.html#/s-general">General back-propagation (L5)</a> and <a href="ch09.html#/s-conv-grad">summing gradients of shared weights (L10)</a>.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="#/s-longterm">The challenge of long-term dependencies</a>.</span></li>
+  </ul></div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-birnn" data-part="Part 2 · Architectures (10.3–10.6)" data-title="Bidirectional RNNs" data-stages="forward">
+  <div class="slide-head"><span class="kicker">10.3 · Bidirectional RNNs</span><h2>Bidirectional RNNs: use the future too</h2><div class="stages"></div></div>
+  <p class="bigidea">A normal RNN is <b>causal</b>: h(t) only knows the past. When the whole sequence is available, run a second RNN <b>backward</b> from the end, and let each output combine both states.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mathbf h^{(t)}=f(\mathbf h^{(t-1)},\mathbf x^{(t)}),\qquad \mathbf g^{(t)}=f'(\mathbf g^{(t+1)},\mathbf x^{(t)}) \]
+        \[ \mathbf o^{(t)}=q(\mathbf h^{(t)},\mathbf g^{(t)}) \]</div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Speech: the right phoneme now may depend on the next few phonemes (<b>coarticulation</b>) and even the next words.</li>
+          <li>h(t): state of the forward sub-RNN; g(t): state of the backward sub-RNN. o(t) depends on past <b>and</b> future but is most sensitive to inputs around t — no fixed-size window needed.</li>
+          <li>Very successful in handwriting recognition, speech recognition and bioinformatics.</li>
+          <li>2-D: four RNNs (up, down, left, right). Compared with CNNs, RNNs on images are more expensive but allow long-range lateral interactions within a feature map.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Causal</dt><dd>Uses only the past and present, never the future.</dd>
+        <dt>g(t)</dt><dd>Hidden state of the RNN moving backward in time.</dd>
+        <dt>Coarticulation</dt><dd>Neighbouring sounds change how each sound is pronounced.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Each step keeps a fraction α = 0.7 of the memory.</li>
+        <li>Forward RNN at t = 8: influence of x(6) ≈ 0.7² = 0.49; of x(10) = 0 (not seen yet).</li>
+        <li>Bidirectional: x(10) reaches o(8) through g(8): 0.7² = 0.49.</li>
+      </ol></div>
+    </div>
+    <div data-widget="birnnDemo"></div>
+  </div>
+</section>
+
+<section class="slide" id="s-deep-rnn" data-part="Part 2 · Architectures (10.3–10.6)" data-title="Deep recurrent networks" data-stages="forward">
+  <div class="slide-head"><span class="kicker">10.5 · Deep recurrent networks</span><h2>Deep recurrent networks</h2><div class="stages"></div></div>
+  <p class="bigidea">An RNN has three blocks — input→hidden, hidden→hidden, hidden→output — each normally a <b>single</b> layer. Adding depth helps, but a deeper hidden→hidden path also makes <b>optimization harder</b>; skip connections fix that.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ol class="steps">
+          <li><b>(a) Stacked states</b>: lower layers transform the raw input into a more useful representation for higher layers.</li>
+          <li><b>(b) A (deep) MLP for each block</b>: allocate enough capacity to each of the three steps. But the shortest path from time t to t + 1 gets longer (one hidden layer in the transition doubles it).</li>
+          <li><b>(c) Skip connections</b> in the hidden-to-hidden path restore a short path.</li>
+        </ol>
+        <p>Experiments strongly suggest depth in these operations is advantageous.</p>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Transition</dt><dd>The hidden→hidden map from h(t) to h(t+1).</dd>
+        <dt>Shortest path</dt><dd>Fewest edges between two variables in the unrolled graph — controls how easily gradients travel.</dd>
+        <dt>Skip connection</dt><dd>An edge that jumps over intermediate layers.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Dependency 10 steps back, each edge shrinks the gradient by 0.9.</li>
+        <li>(a) or (c): 10 edges → 0.9¹⁰ = 0.35. (b): 20 edges → 0.9²⁰ = 0.12.</li>
+      </ol></div>
+    </div>
+    <div data-widget="deepRnnPaths"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch08-6.html#/s-design">Skip connections to ease optimization (L9)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-recursive" data-part="Part 2 · Architectures (10.3–10.6)" data-title="Recursive neural networks" data-stages="forward">
+  <div class="slide-head"><span class="kicker">10.6 · Recursive neural networks</span><h2>Recursive networks: trees instead of chains</h2><div class="stages"></div></div>
+  <p class="bigidea">A recursive network applies the same combining function over a <b>tree</b>, not a chain. For a sequence of length τ the depth drops from τ to <b>O(log τ)</b>, which may help with long-term dependencies.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \text{depth: chain }=\tau-1\qquad\text{balanced tree }=\lceil\log_2\tau\rceil \]</div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Used to process data structures as input to neural nets, in natural language processing and computer vision.</li>
+          <li>Open question: how to structure the tree? (1) A fixed tree independent of the data, e.g. a balanced binary tree; (2) a structure from outside, e.g. a sentence’s parse tree from a language parser; (3) ideally, the learner discovers the appropriate tree for each input.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Recursive network</dt><dd>Same weights applied at every internal node of a tree.</dd>
+        <dt>Parse tree</dt><dd>The grammatical structure of a sentence as a tree.</dd>
+        <dt>⌈·⌉</dt><dd>Round up (ceiling).</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>τ = 64: chain depth 63, tree depth log₂ 64 = 6.</li>
+        <li>With 0.8 per level: 0.8⁶³ ≈ 8 × 10⁻⁷ vs 0.8⁶ = 0.26.</li>
+      </ol></div>
+    </div>
+    <div data-widget="treeVsChain"></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-longterm" data-part="Part 3 · Long-term dependencies (10.7–10.11)" data-title="The challenge of long-term dependencies" data-stages="backward">
+  <div class="slide-head"><span class="kicker">10.7 · The challenge of long-term dependencies</span><h2>Why long-term dependencies are hard</h2><div class="stages"></div></div>
+  <p class="bigidea">Gradients through many time steps are products of many Jacobians: they usually <b>vanish</b> and occasionally <b>explode</b>. Even when stable, long-term interactions get <b>exponentially smaller</b> weight than short-term ones.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mathbf h^{(t)}=\mathbf W^{\top}\mathbf h^{(t-1)}\quad\Rightarrow\quad\mathbf h^{(t)}=(\mathbf W^{t})^{\top}\mathbf h^{(0)} \]<span class="eqno">(10.36–10.37)</span>
+        \[ \mathbf W=\mathbf Q\boldsymbol\Lambda\mathbf Q^{\top}\quad\Rightarrow\quad\mathbf h^{(t)}=\mathbf Q^{\top}\boldsymbol\Lambda^{t}\mathbf Q\,\mathbf h^{(0)} \]<span class="eqno">(10.38–10.39)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>RNNs compose the <b>same function</b> once per step → extremely nonlinear behaviour.</li>
+          <li>Linear, input-free RNN: eigenvalues are raised to the power t. |λ| &lt; 1 decays to zero, |λ| &gt; 1 explodes; components not aligned with the largest eigenvector are eventually discarded.</li>
+          <li>Scalar view: \(w^t\) vanishes or explodes. A <b>non-recurrent</b> net with different random weights per step (variance v) has product variance \(O(v^n)\), so we can pick \(v=\sqrt[n]{v^*}\) — very deep feedforward nets can avoid the problem by careful scaling; RNNs share W, so they cannot.</li>
+          <li>The gradient of long-term interactions is exponentially smaller, so the signal is hidden by short-term fluctuations: SGD’s success probability drops to ~0 for dependencies of only 10–20 steps.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Long-term dependency</dt><dd>An output depending on an input many steps earlier.</dd>
+        <dt>Eigendecomposition</dt><dd>W = QΛQᵀ: Q orthogonal (eigenvectors), Λ diagonal (eigenvalues).</dd>
+        <dt>Vanishing / exploding gradient</dt><dd>Gradients shrinking to ~0 / growing huge over many steps.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>W with eigenvalues 0.9 and 1.1, h(0) = 1 along each eigenvector.</li>
+        <li>After 50 steps: 0.9⁵⁰ = 0.005 and 1.1⁵⁰ = 117.</li>
+        <li>Feedforward alternative: want product variance v* = 0.01 over n = 10 layers → choose v = 0.01^{1/10} = 0.63 per layer.</li>
+      </ol></div>
+    </div>
+    <div data-widget="longTermDemo"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch08-1.html#/s-longterm">Long-term dependencies in optimization (L7)</a> and <a href="ch08-3.html#/s-init-scale">initialization scale (L8)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-esn" data-part="Part 3 · Long-term dependencies (10.7–10.11)" data-title="Echo state networks" data-stages="init">
+  <div class="slide-head"><span class="kicker">10.8 · Echo state networks</span><h2>Echo state networks: don’t learn the recurrence</h2><div class="stages"></div></div>
+  <p class="bigidea">Avoid the hard part: <b>fix</b> the input and recurrent weights so the state captures a rich history, and learn <b>only the output weights</b> (linear regression — convex). Set the dynamics near the <b>edge of stability</b>.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mathbf J^{(t)}=\frac{\partial\mathbf s^{(t)}}{\partial\mathbf s^{(t-1)}},\qquad \text{spectral radius }\rho(\mathbf J)=\max_i|\lambda_i| \]</div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Echo state networks (continuous units) and liquid state machines (spiking units) are called <b>reservoir computing</b>.</li>
+          <li>Like kernel machines: map a sequence of any length to a fixed-length vector (the state), then apply a linear predictor.</li>
+          <li>How to set the weights? View the RNN as a dynamical system near the edge of stability: make the eigenvalues of the state-to-state Jacobian close to 1.</li>
+          <li>ESNs fix the weights to a spectral radius such as 3: information is carried forward without exploding because saturating nonlinearities like tanh stabilize it.</li>
+          <li>The same idea is useful for <b>initializing</b> the recurrent weights of a fully trainable RNN.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Reservoir</dt><dd>The fixed, random recurrent network.</dd>
+        <dt>Readout</dt><dd>The trained linear output layer.</dd>
+        <dt>Spectral radius</dt><dd>Largest absolute eigenvalue: how much the map can stretch a vector per step (in the long run).</dd>
+        <dt>Convex</dt><dd>Bowl-shaped objective with a single global minimum.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>\(\mathbf W=\begin{bmatrix}0.6&amp;0.2\\0.2&amp;0.6\end{bmatrix}\): eigenvalues 0.6 ± 0.2 = 0.8 and 0.4 → ρ = 0.8.</li>
+        <li>To get ρ = 1.0, scale W by 1/0.8 = 1.25.</li>
+        <li>Readout: solve the least-squares problem min‖Hw − y‖² — one linear system, no BPTT.</li>
+      </ol></div>
+    </div>
+    <div data-widget="esnDemo"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch05-1.html#/s-linreg">Linear regression (L1)</a> and <a href="ch08-3.html#/s-init-scale">initializing near norm preservation (L8)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-leaky" data-part="Part 3 · Long-term dependencies (10.7–10.11)" data-title="Leaky units & multiple time scales" data-stages="forward,backward">
+  <div class="slide-head"><span class="kicker">10.9 · Leaky units and other strategies for multiple time scales</span><h2>Multiple time scales: skips, leaky units, removed connections</h2><div class="stages"></div></div>
+  <p class="bigidea">Let some parts of the model work on <b>fine</b> time scales (details) and others on <b>coarse</b> ones (carry information from the distant past) — so some paths have derivative products close to 1.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mu^{(t)}\leftarrow\alpha\,\mu^{(t-1)}+(1-\alpha)\,v^{(t)} \]
+        \[ \text{skip with delay }d:\ \text{gradients shrink like }\lambda^{\tau/d}\ \text{instead of }\lambda^{\tau} \]</div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ol class="steps">
+          <li><b>Skip connections through time</b>: direct edges from t − d to t. Gradients diminish exponentially in τ/d rather than τ (they may still explode, since single-step edges remain).</li>
+          <li><b>Leaky units</b>: a linear self-connection with weight α — a running average. α near 1 remembers long, near 0 forgets fast. A real-valued α adjusts the time scale more smoothly than an integer skip length.</li>
+          <li><b>Removing connections</b>: replace length-one connections by longer ones; or give groups of leaky units different fixed time scales; or update different groups at different frequencies.</li>
+        </ol>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Leaky unit</dt><dd>Hidden unit with a linear self-loop (a running average).</dd>
+        <dt>Time constant</dt><dd>About 1/(1 − α) steps: how long the unit remembers.</dd>
+        <dt>Time scale</dt><dd>How fast a part of the model reacts to change.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>α = 0.9, pulse v = 1 at t = 5: μ(5) = 0.1; 10 steps later 0.1 × 0.9¹⁰ = 0.035; time constant 1/0.1 = 10 steps.</li>
+        <li>τ = 40, d = 4, factor 0.9 per edge: 0.9⁴⁰ = 0.015 without skips vs 0.9¹⁰ = 0.35 with skips.</li>
+      </ol></div>
+    </div>
+    <div data-widget="leakyDemo"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag same">Compare</span><span><a href="ch08-3.html#/s-momentum">Momentum (L8)</a> and <a href="ch08-6.html#/s-polyak">exponential moving averages (L9)</a> use the same running-average update.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-lstm" data-part="Part 3 · Long-term dependencies (10.7–10.11)" data-title="LSTM" data-stages="forward,init">
+  <div class="slide-head"><span class="kicker">10.10 · The long short-term memory</span><h2>LSTM: a leaky unit whose leak is learned and gated</h2><div class="stages"></div></div>
+  <p class="bigidea"><b>Gated RNNs</b> (LSTM, GRU) are the most effective practical sequence models. The LSTM cell keeps a <b>state</b> with a linear self-loop whose weight (the <b>forget gate</b>) depends on the context — so the network learns when to keep, write, read and forget.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ f^{(t)}_i=\sigma\Big(b^f_i+\sum_jU^f_{i,j}x^{(t)}_j+\sum_jW^f_{i,j}h^{(t-1)}_j\Big) \]<span class="eqno">(10.40) forget gate</span>
+        \[ s^{(t)}_i=f^{(t)}_is^{(t-1)}_i+g^{(t)}_i\,\sigma\Big(b_i+\sum_jU_{i,j}x^{(t)}_j+\sum_jW_{i,j}h^{(t-1)}_j\Big) \]<span class="eqno">(10.41) state</span>
+        \[ g^{(t)}_i=\sigma\Big(b^g_i+\sum_jU^g_{i,j}x^{(t)}_j+\sum_jW^g_{i,j}h^{(t-1)}_j\Big) \]<span class="eqno">(10.42) input gate</span>
+        \[ h^{(t)}_i=\tanh\big(s^{(t)}_i\big)\,q^{(t)}_i \]<span class="eqno">(10.43) output</span>
+        \[ q^{(t)}_i=\sigma\Big(b^o_i+\sum_jU^o_{i,j}x^{(t)}_j+\sum_jW^o_{i,j}h^{(t-1)}_j\Big) \]<span class="eqno">(10.44) output gate</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Like leaky units, gated RNNs create paths through time whose derivatives neither vanish nor explode — but the connection weights may <b>change at each time step</b>.</li>
+          <li>Leaky units accumulate evidence; but once used, it may be useful to <b>forget</b> it (e.g. reset at the start of each sub-sequence). The network should learn when.</li>
+          <li><b>State unit</b> s: the memory, with a linear self-loop. <b>Forget gate</b> f ∈ (0, 1): its weight. <b>Input gate</b> g: how much new input to write. <b>Output gate</b> q: whether to reveal the state.</li>
+          <li>Each cell has the same inputs/outputs as an ordinary unit, plus more parameters and the gating system. Along the state path ∂s(t)/∂s(t−1) = f(t): no squashing, so gradients survive while f ≈ 1.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Gate</dt><dd>A sigmoid unit in (0, 1) that multiplies a signal: 0 = block, 1 = pass.</dd>
+        <dt>Cell state s</dt><dd>The LSTM’s internal memory.</dd>
+        <dt>bᶠ, Uᶠ, Wᶠ</dt><dd>Bias, input weights and recurrent weights of the forget gate (similarly for the other gates).</dd>
+        <dt>Internal / outer recurrence</dt><dd>The cell’s self-loop vs. the usual h(t−1) → h(t) recurrence.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>s(t−1) = 0.9, f = 0.95, g = 0.002 (input gate closed), candidate 0.5: s(t) = 0.95 × 0.9 + 0.002 × 0.5 = 0.856.</li>
+        <li>Output gate closed q = 0.0025: h = tanh(0.856) × 0.0025 = 0.0017. Open q = 0.9975: h = 0.694 × 0.9975 = 0.692.</li>
+        <li>Memory over 9 steps: forget bias 3 → σ(3)⁹ = 0.953⁹ = 0.65; bias 1 → 0.731⁹ = 0.06; bias 0 → 0.5⁹ = 0.002.</li>
+      </ol></div>
+    </div>
+    <div data-widget="lstmCell"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch08-3.html#/s-init-bias">Gate-bias initialization (L8)</a> and <a href="ch06-1.html#/s-output-sigmoid">sigmoid units (L4)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-gru" data-part="Part 3 · Long-term dependencies (10.7–10.11)" data-title="GRU and other gated RNNs" data-stages="forward">
+  <div class="slide-head"><span class="kicker">10.10.2 · Other gated RNNs</span><h2>The GRU: one gate to forget and update</h2><div class="stages"></div></div>
+  <p class="bigidea">In a <b>gated recurrent unit</b> a single <b>update gate</b> u decides both how much to forget and how much to write: copy the old state (u = 1) or replace it by a new target (u = 0). A <b>reset gate</b> r decides which parts of the state are used to compute that target.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ h^{(t)}_i=u^{(t-1)}_i\,h^{(t-1)}_i+\big(1-u^{(t-1)}_i\big)\,\tilde h_i \]
+        \[ \tilde h_i=\sigma\Big(b_i+\sum_jU_{i,j}x^{(t-1)}_j+\sum_jW_{i,j}r^{(t-1)}_jh^{(t-1)}_j\Big) \]<span class="eqno">(10.45), h̃ = the “target state”</span>
+        \[ u^{(t)}_i=\sigma\Big(b^u_i+\sum_jU^u_{i,j}x^{(t)}_j+\sum_jW^u_{i,j}h^{(t)}_j\Big) \]<span class="eqno">(10.46) update gate</span>
+        \[ r^{(t)}_i=\sigma\Big(b^r_i+\sum_jU^r_{i,j}x^{(t)}_j+\sum_jW^r_{i,j}h^{(t)}_j\Big) \]<span class="eqno">(10.47) reset gate</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Update gates act like <b>conditional leaky integrators</b>: per dimension, copy it or replace it with the new “target state”.</li>
+          <li>Reset gates control which parts of the state feed the next target → extra nonlinear interaction between past and future state.</li>
+          <li>Many variants are possible (a gate shared by several units; global × local gates). Large studies found <b>no variant clearly beating LSTM and GRU</b> across many tasks.</li>
+          <li>Crucial ingredient: the <b>forget gate</b>. Adding a bias of <b>1</b> to the LSTM forget gate makes the LSTM as strong as the best variants.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Update gate u</dt><dd>Fraction of the old state that is kept.</dd>
+        <dt>Reset gate r</dt><dd>Which parts of the old state are used to compute the target.</dd>
+        <dt>Target state</dt><dd>The candidate new value σ(b + Ux + W(r ⊙ h)).</dd>
+        <dt>⊙</dt><dd>Element-wise multiplication.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>h(t−1) = 0.6, target h̃ = 0.9, update gate u = 0.8.</li>
+        <li>h(t) = 0.8 × 0.6 + 0.2 × 0.9 = 0.48 + 0.18 = 0.66.</li>
+        <li>u = 0: h(t) = 0.9 (replace). u = 1: h(t) = 0.6 (copy).</li>
+      </ol></div>
+    </div>
+    <div data-widget="gruUpdate"></div>
+  </div>
+</section>
+
+<section class="slide" id="s-clip" data-part="Part 3 · Long-term dependencies (10.7–10.11)" data-title="Clipping gradients" data-stages="update">
+  <div class="slide-head"><span class="kicker">10.11.1 · Clipping gradients</span><h2>Clipping gradients</h2><div class="stages"></div></div>
+  <p class="bigidea">Near a <b>cliff</b> the gradient can be huge, and one step can throw the parameters far into a bad region. Simple fix: if the gradient is too long, <b>shrink it</b> before the update.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \text{if }\ \|\mathbf g\|&gt;v:\qquad \mathbf g\leftarrow\frac{\mathbf g\,v}{\|\mathbf g\|} \]<span class="eqno">(10.48–10.49)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Two options: clip the minibatch gradient <b>element-wise</b>, or clip its <b>norm</b> ‖g‖ just before the update (v = threshold).</li>
+          <li>Norm clipping rescales all parameters’ gradients jointly with a single factor, so each step is still in the gradient direction; experiments suggest both forms work similarly.</li>
+          <li>Even a <b>random step</b> when the gradient is above the threshold works almost as well. If the gradient is Inf or NaN, a random step of size v usually moves away from the unstable configuration.</li>
+          <li>Clipping helps with <b>exploding</b> gradients, not vanishing ones.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>‖g‖</dt><dd>Euclidean length of the gradient vector.</dd>
+        <dt>v</dt><dd>Norm threshold.</dd>
+        <dt>Inf / NaN</dt><dd>Infinite / not-a-number values from numerical overflow.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>g = (6, 8): ‖g‖ = √(36 + 64) = 10 &gt; v = 5.</li>
+        <li>Norm clipping: g × 5/10 = (3, 4) — same direction, length 5.</li>
+        <li>Element-wise to [−5, 5]: (5, 5) — length 7.07 and the direction turns from 53.1° to 45°.</li>
+      </ol></div>
+    </div>
+    <div data-widget="clipDemo"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch08-1.html#/s-cliffs">Cliffs and exploding gradients (L7)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-info-flow" data-part="Part 3 · Long-term dependencies (10.7–10.11)" data-title="Regularizing for information flow" data-stages="backward">
+  <div class="slide-head"><span class="kicker">10.11.2 · Regularizing to encourage information flow</span><h2>Regularizing to encourage information flow</h2><div class="stages"></div></div>
+  <p class="bigidea">Against <b>vanishing</b> gradients: either build paths with derivative ≈ 1 (LSTM, self-loops, gates), or add a <b>regularizer</b> that asks the back-propagated gradient to keep its <b>size</b> from step to step.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \text{want}\quad\Big\|(\nabla_{\mathbf h^{(t)}}L)\frac{\partial\mathbf h^{(t)}}{\partial\mathbf h^{(t-1)}}\Big\|\ \approx\ \big\|\nabla_{\mathbf h^{(t)}}L\big\| \]
+        \[ \Omega=\sum_t\left(\frac{\big\|(\nabla_{\mathbf h^{(t)}}L)\,\frac{\partial\mathbf h^{(t)}}{\partial\mathbf h^{(t-1)}}\big\|}{\big\|\nabla_{\mathbf h^{(t)}}L\big\|}-1\right)^2 \]<span class="eqno">(10.50)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Goal: the gradient vector being back-propagated keeps its magnitude, even if the loss only penalizes the output at the end.</li>
+          <li>Computing ∇Ω exactly is hard; approximation: treat the back-propagated vectors ∇_{h(t)}L as constants.</li>
+          <li>Combined with norm clipping it considerably increases the span of dependencies an RNN can learn. Clipping is essential because Ω keeps the dynamics on the edge of explosive gradients.</li>
+          <li>Weakness: not as effective as the LSTM when data is abundant.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Ω</dt><dd>Regularization penalty added to the loss.</dd>
+        <dt>∂h(t)/∂h(t−1)</dt><dd>Jacobian of one recurrent step.</dd>
+        <dt>Information flow</dt><dd>How well gradient (error) signals travel back through time.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Every step multiplies the gradient norm by 0.8, sequence of 30 steps.</li>
+        <li>Gradient reaching t = 1: 0.8²⁹ = 0.0015 of the original.</li>
+        <li>Ω = 29 × (0.8 − 1)² = 29 × 0.04 = 1.16; at ratio 1, Ω = 0 and the gradient arrives intact.</li>
+      </ol></div>
+    </div>
+    <div data-widget="infoFlow"></div>
+  </div>
+</section>
+
+<section class="slide" id="s-summary" data-part="Wrap-up" data-title="Summary: how it all connects" data-stages="forward,loss,backward,update">
+  <div class="slide-head"><span class="kicker">Wrap-up</span><h2>Summary: how it all connects</h2><div class="stages"></div></div>
+  <p class="bigidea">RNNs = <b>shared parameters through time</b> + a <b>state</b>. Train with BPTT (or teacher forcing). The long chain makes gradients vanish or explode; fix it with <b>short paths</b> (skips, trees), <b>paths with derivative ≈ 1</b> (leaky units, LSTM/GRU), <b>clipping</b>, or regularization.</p>
+  <div class="card" style="padding:0;overflow:hidden"><div class="scroll-x"><table class="data-table">
+    <thead><tr><th>Idea</th><th>Key formula</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td>Recurrence</td><td>\(\mathbf h^{(t)}=f(\mathbf h^{(t-1)},\mathbf x^{(t)};\boldsymbol\theta)\)</td><td>any length, shared θ</td></tr>
+      <tr><td>Forward</td><td>\(\mathbf a=\mathbf b+\mathbf W\mathbf h+\mathbf U\mathbf x,\ \mathbf o=\mathbf c+\mathbf V\mathbf h\)</td><td>predict at every step</td></tr>
+      <tr><td>Loss</td><td>\(L=-\sum_t\log p(y^{(t)}\mid\mathbf x^{(1..t)})\)</td><td>maximum likelihood</td></tr>
+      <tr><td>Teacher forcing</td><td>feed true y(t) into step t + 1</td><td>parallel training</td></tr>
+      <tr><td>BPTT</td><td>\(\nabla_{\mathbf h^{(t)}}L=\mathbf W^{\top}\mathrm{diag}(1-\mathbf h^{(t+1)2})\nabla_{\mathbf h^{(t+1)}}L+\mathbf V^{\top}\nabla_{\mathbf o^{(t)}}L\)</td><td>gradients, O(τ)</td></tr>
+      <tr><td>Bidirectional / deep / recursive</td><td>past + future; depth per block; log τ depth</td><td>more context, capacity, shorter paths</td></tr>
+      <tr><td>Long-term problem</td><td>\(\boldsymbol\Lambda^t\)</td><td>vanishing / exploding</td></tr>
+      <tr><td>ESN, leaky, skips</td><td>ρ ≈ 1; μ ← αμ + (1−α)v; delay d</td><td>multiple time scales</td></tr>
+      <tr><td>LSTM / GRU</td><td>s ← f s + g·input; h ← u h + (1−u) h̃</td><td>learned, gated memory</td></tr>
+      <tr><td>Clipping, Ω</td><td>g ← g v/‖g‖; ratio ≈ 1</td><td>exploding / vanishing</td></tr>
+    </tbody>
+  </table></div></div>
+  <div class="row3" style="margin-top:16px">
+    <div class="card plain"><h3><span class="dot"></span>Remember</h3><p>An RNN is a very deep network unrolled in time whose layers all share the same weights.</p></div>
+    <div class="card plain"><h3><span class="dot"></span>The whole course</h3><p>Go back to the <a href="../index.html">course map</a> to see how every lecture connects in the training loop.</p></div>
+    <div class="card fit"><h3><span class="dot"></span>Check yourself</h3><p>Twelve quiz questions with explanations.</p><button class="btn primary" type="button" data-goto="s-quiz" style="margin-top:6px">Take the quiz →</button></div>
+  </div>
+</section>
+
+<section class="slide" id="s-quiz" data-part="Wrap-up" data-title="Check yourself (quiz)">
+  <div class="slide-head"><span class="kicker">Wrap-up</span><h2>Check yourself</h2><p class="lede">Pick an answer to see whether it is right and why.</p></div>
+  <div data-widget="quiz"></div>
+  <footer class="credits">Study notes for Deep Learning, chapter 10. Equation numbers follow Goodfellow, Bengio &amp; Courville, <em>Deep Learning</em> (MIT Press, 2016). Explanations, diagrams and demos are original.</footer>
+</section>
+
+</main>
+</body>
+</html>
