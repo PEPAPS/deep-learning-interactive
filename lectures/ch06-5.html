@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Back-Propagation</title>
+<meta name="description" content="Interactive notes for Deep Learning chapter 6.5: back-propagation, computational graphs, the chain rule, recursive application, backprop for MLPs, general back-propagation and dynamic programming, a full MLP training example and implementation complications.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232a78d6'/%3E%3Cpath d='M6 9c5 0 6 14 10 14s5-14 10-14' fill='none' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<link rel="stylesheet" href="../css/style.css?v=10">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script defer src="../js/core.js?v=10"></script>
+<script defer src="../js/course.js?v=10"></script>
+<script defer src="../js/quiz.js?v=10"></script>
+<script defer src="../js/lectures/ch06-5.js?v=10"></script>
+</head>
+<body data-page="lecture" data-lecture="ch06-5">
+<script>
+window.TOPICS = {
+  forward: [['s-graph', 'Forward propagation through a graph'], ['s-recursive', 'Algorithm 6.1: compute nodes in order']],
+  loss: [['s-example', 'Cross-entropy + weight-decay cost']],
+  backward: [['s-backprop-what', 'What back-propagation computes'], ['s-chain', 'Chain rule & Jacobians'], ['s-recursive', 'Store vs. recompute'], ['s-mlp-backprop', 'Algorithm 6.4 for MLPs'], ['s-general', 'General backprop: sum over paths'], ['s-example', 'MLP training example']],
+  update: [['s-example', 'SGD uses the computed gradient']]
+};
+</script>
+
+<main class="deck" id="deck">
+
+<section class="slide" id="s-title" data-part="Start here" data-title="Welcome: computing gradients">
+  <div class="slide-head">
+    <span class="kicker">Lecture 5 · Chapter 6.5</span>
+    <h1>Back-Propagation</h1>
+    <p class="lede">Gradient descent needs \(\nabla_{\boldsymbol\theta}J\) for <b>every</b> weight. Writing the formula is easy; <b>computing</b> it cheaply is the problem. Back-propagation walks the network’s <b>computational graph</b> backwards, applying the <b>chain rule</b> once per edge and reusing stored results — so a full gradient costs about as much as one forward pass.</p>
+  </div>
+  <div class="road">
+    <div class="card big"><span class="kicker">Part 1</span><h4>The ingredients</h4><ol><li>What backprop is (and isn’t)</li><li>Computational graphs</li><li>The chain rule, scalars to tensors</li><li>Recursion: store or recompute?</li></ol><button class="btn primary go" type="button" data-goto="s-backprop-what">Start →</button></div>
+    <div class="card big"><span class="kicker">Part 2</span><h4>The algorithms</h4><ol><li>Backprop in a fully connected MLP</li><li>General backprop &amp; its cost</li><li>Full example: training an MLP</li><li>Complications in real software</li></ol><button class="btn primary go" type="button" data-goto="s-mlp-backprop">Jump to Part 2 →</button></div>
+  </div>
+</section>
+
+<section class="slide" id="s-loop" data-part="Start here" data-title="Where this lecture fits" data-stages="forward,backward">
+  <div class="slide-head"><span class="kicker">Start here</span><h2>Where this lecture fits in training</h2><div class="stages"></div></div>
+  <p class="bigidea">Back-propagation is <b>step 6</b> of the loop: after the forward pass has produced the loss, information flows <b>backward</b> to give the gradient that the optimizer (step 7) uses.</p>
+  <div class="stack"><div data-widget="loop"></div>
+    <div class="row3">
+      <div class="card plain"><h3><span class="dot"></span>Forward propagation</h3><p>x → hidden units → ŷ → scalar cost J(θ). Every intermediate value is remembered.</p></div>
+      <div class="card plain"><h3><span class="dot"></span>Back-propagation</h3><p>From ∂J/∂J = 1, multiply by local derivatives (Jacobians) backwards through the graph, summing where paths merge.</p></div>
+      <div class="card plain"><h3><span class="dot"></span>Then learning</h3><p>SGD, momentum, Adam … use ∇θJ to update θ. Backprop itself does not learn anything.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-backprop-what" data-part="Part 1 · Ingredients" data-title="What back-propagation is" data-stages="backward">
+  <div class="slide-head"><span class="kicker">6.5 · Back-propagation</span><h2>What back-propagation is — and what it isn’t</h2><div class="stages"></div></div>
+  <p class="bigidea">Backprop is <b>only a way to compute the gradient</b>, cheaply and exactly. It is not the learning algorithm (that’s SGD), and it is not specific to neural networks — it differentiates any function built from known operations.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \text{goal: }\ \nabla_{\mathbf x}f(\mathbf x,\mathbf y)\quad\text{— in learning: }\ \nabla_{\boldsymbol\theta}J(\boldsymbol\theta) \]</div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li><b>Forward propagation</b>: x flows up through the hidden units to ŷ, and on to the scalar cost J(θ).</li>
+          <li><b>Back-propagation</b> (“backprop”): information from the cost flows <b>backward</b> to compute the gradient.</li>
+          <li>An analytical gradient formula is easy to write but can be expensive to <b>evaluate</b> numerically; backprop is a simple, inexpensive procedure.</li>
+          <li>We want ∇ₓf(x, y) where x are the variables whose derivatives we need (the parameters) and y are other inputs whose derivatives we don’t need (e.g. the data).</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Forward propagation</dt><dd>Computing outputs (and the cost) from inputs.</dd>
+        <dt>Back-propagation</dt><dd>Computing derivatives of the cost by going backwards.</dd>
+        <dt>Numerical gradient</dt><dd>Estimate via \((J(\theta+\epsilon)-J(\theta-\epsilon))/2\epsilon\) for each parameter — exact enough to <em>check</em> backprop, far too slow to <em>train</em>.</dd>
+        <dt>Gradient check</dt><dd>Comparing backprop to the numerical gradient to catch bugs.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>A network with 1 000 000 weights. Numerical gradient: 2 forward passes per weight → 2 000 000 passes.</li>
+        <li>Backprop: 1 forward + 1 backward pass (similar cost) ≈ 2–3 passes.</li>
+        <li>Speed-up ≈ \(2\,000\,000/3\approx670\,000\times\) — the difference between impossible and routine.</li>
+      </ol></div>
+    </div>
+    <div data-widget="numVsBackprop"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch04-3.html#/s-multi">Gradient & partial derivatives (L3)</a> and <a href="ch04-3.html#/s-sgd">SGD (L3)</a>: the consumer of the gradient.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch10.html#/s-bptt">Back-propagation through time (L11)</a>: the same algorithm on an unrolled recurrent network.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-graph" data-part="Part 1 · Ingredients" data-title="Computational graphs" data-stages="forward,backward">
+  <div class="slide-head"><span class="kicker">6.5.1 · Computational graphs</span><h2>Computational graphs: computation as a picture</h2><div class="stages"></div></div>
+  <p class="bigidea">Draw every <b>variable</b> as a node and every “is used to compute” as an <b>edge</b>. The forward pass fills in values; the backward pass fills in gradients — node by node.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li><b>Node</b> = a variable: scalar, vector, matrix, tensor, or another type.</li>
+          <li><b>Operation</b> = a simple function of one or more variables. Complicated functions = compositions of many operations.</li>
+          <li>Without loss of generality, an operation returns <b>one</b> output variable (which can have many entries, e.g. a vector).</li>
+          <li>If y is computed by applying an operation to x, draw a <b>directed edge</b> from x to y, optionally labelled with the operation.</li>
+          <li>Textbook examples: (a) z = xy; (b) logistic prediction ŷ = σ(xᵀw + b); (c) ReLU layer H = max{0, XW + b}; (d) linear regression plus a weight-decay penalty.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Directed acyclic graph (DAG)</dt><dd>Edges have a direction and there are no cycles, so nodes can be computed in order.</dd>
+        <dt>Parent / child</dt><dd>x is a parent of y if y is computed directly from x.</dd>
+        <dt>Leaf</dt><dd>A node with no parents: an input or a parameter.</dd>
+        <dt>Local derivative</dt><dd>Derivative of one operation’s output w.r.t. one of its inputs (the edge’s “price”).</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Graph (a): x = 2, y = −3 → forward z = x·y = −6.</li>
+        <li>Backward: ∂z/∂z = 1. Local derivatives of multiplication: ∂z/∂x = y = −3, ∂z/∂y = x = 2.</li>
+        <li>So ∂z/∂x = 1·(−3) = −3 and ∂z/∂y = 1·2 = 2: increasing x by 0.01 changes z by −0.03.</li>
+      </ol></div>
+    </div>
+    <div data-widget="graphBackprop"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch06-1.html#/s-ffn">Networks as composed functions (L4)</a>.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch10.html#/s-unfold">Unfolding an RNN into a graph (L11)</a> and <a href="ch08-6.html#/s-bn-backprop">backprop through batch-norm statistics (L9)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-chain" data-part="Part 1 · Ingredients" data-title="The chain rule" data-stages="backward">
+  <div class="slide-head"><span class="kicker">6.5.2 · Chain rule of calculus</span><h2>The chain rule: from scalars to tensors</h2><div class="stages"></div></div>
+  <p class="bigidea">Derivatives of composed functions <b>multiply</b>. For vectors that becomes a <b>Jacobian-transpose × gradient</b> product; backprop performs one such product per operation, in a smart order.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ y=g(x),\ z=f(y):\qquad\frac{dz}{dx}=\frac{dz}{dy}\frac{dy}{dx} \]<span class="eqno">(6.44)</span>
+        \[ \frac{\partial z}{\partial x_i}=\sum_j\frac{\partial z}{\partial y_j}\frac{\partial y_j}{\partial x_i}\qquad\Longleftrightarrow\qquad\nabla_{\mathbf x}z=\Big(\frac{\partial\mathbf y}{\partial\mathbf x}\Big)^{\!\top}\nabla_{\mathbf y}z \]<span class="eqno">(6.45–6.46)</span>
+        \[ \nabla_{\mathbf X}z=\sum_j\big(\nabla_{\mathbf X}Y_j\big)\frac{\partial z}{\partial Y_j} \]<span class="eqno">(6.47) tensors (j = a tuple of indices)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>If x → y → z, a small change in x changes y by (dy/dx) times, which changes z by (dz/dy) times that.</li>
+          <li>With \(\mathbf x\in\mathbb R^m\), \(\mathbf y\in\mathbb R^n\): \(\frac{\partial\mathbf y}{\partial\mathbf x}\) is the n×m <b>Jacobian</b> of g. Each \(x_i\) affects z through <b>every</b> \(y_j\), so we sum.</li>
+          <li>Tensors: conceptually identical — imagine flattening them into vectors, running backprop, and reshaping the gradient back.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Jacobian \(\partial\mathbf y/\partial\mathbf x\)</dt><dd>Matrix with entry (j, i) = \(\partial y_j/\partial x_i\).</dd>
+        <dt>Jacobian-vector product</dt><dd>Multiplying (the transpose of) a Jacobian by a gradient vector — never forming huge matrices if avoidable.</dd>
+        <dt>Tensor</dt><dd>An array with any number of indices (vector = 1, matrix = 2, image batch = 4).</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>x = 0.5: \(y=x^2+1=1.25\), dy/dx = 2x = 1.</li>
+        <li>\(z=\sin(1.25)=0.949\), dz/dy = cos(1.25) = 0.315.</li>
+        <li>dz/dx = 0.315 × 1 = 0.315.</li>
+        <li>Vector: \(\mathbf y=\mathbf A\mathbf x\) with A = [[1, 2], [−1, 0.5]], x = (1, 0) → y = (1, −1); \(z=\|\mathbf y\|^2\), \(\nabla_{\mathbf y}z=2\mathbf y=(2,-2)\); \(\nabla_{\mathbf x}z=\mathbf A^\top(2,-2)=(1\cdot2+(-1)(-2),\ 2\cdot2+0.5(-2))=(4,3)\).</li>
+      </ol></div>
+    </div>
+    <div data-widget="chainRule"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch04-3.html#/s-jacobian-hessian">Jacobian matrices (L3)</a>.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch08-1.html#/s-longterm">Vanishing & exploding gradients (L7)</a>: a product of many Jacobians can shrink to 0 or blow up.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-recursive" data-part="Part 1 · Ingredients" data-title="Recursively applying the chain rule" data-stages="forward,backward">
+  <div class="slide-head"><span class="kicker">6.5.3 · Recursively applying the chain rule</span><h2>Repeated subexpressions: store or recompute?</h2><div class="stages"></div></div>
+  <p class="bigidea">The gradient formula reuses the same subexpressions many times. Backprop <b>computes each intermediate value once and stores it</b> (fast, uses memory). Recomputing saves memory but can cost exponentially more time.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ x=f(w),\ y=f(x),\ z=f(y):\quad\frac{\partial z}{\partial w}=\frac{\partial z}{\partial y}\frac{\partial y}{\partial x}\frac{\partial x}{\partial w}=f'(y)f'(x)f'(w)=f'\big(f(f(w))\big)\,f'\big(f(w)\big)\,f'(w) \]<span class="eqno">(6.49–6.52)</span>
+        \[ u^{(i)}=f^{(i)}\big(\mathbb A^{(i)}\big),\qquad\frac{\partial u^{(n)}}{\partial u^{(j)}}=\sum_{i:\,j\in Pa(u^{(i)})}\frac{\partial u^{(n)}}{\partial u^{(i)}}\frac{\partial u^{(i)}}{\partial u^{(j)}} \]<span class="eqno">(6.48), (6.53)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Eq. 6.51: compute f(w) once, store it as x (the backprop approach). Eq. 6.52: recompute f(w) whenever it’s needed (saves memory).</li>
+          <li><b>Algorithm 6.1 (forward)</b>: order the nodes so each can be computed after its parents; set the inputs \(u^{(1)}\dots u^{(n_i)}\); then compute \(u^{(i)}=f^{(i)}(\mathbb A^{(i)})\), where \(\mathbb A^{(i)}\) are the values of the parents of \(u^{(i)}\).</li>
+          <li><b>Algorithm 6.2 (backward)</b>: a second graph 𝓑 runs in exactly reverse order; each node computes \(\partial u^{(n)}/\partial u^{(j)}\) by summing over its children (6.53), one dot product per node.</li>
+          <li>𝓑 has one edge per edge of the forward graph; each costs one partial derivative, one multiply and one add → <b>cost linear in the number of edges</b>.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>\(u^{(n)}\)</dt><dd>The final scalar (the cost for one example or a minibatch).</dd>
+        <dt>\(u^{(1)}\dots u^{(n_i)}\)</dt><dd>The input nodes — in learning, the parameters.</dd>
+        <dt>\(Pa(u^{(i)})\)</dt><dd>The parents of node i.</dd>
+        <dt>Subexpression</dt><dd>A piece of a formula that appears several times, like f(w).</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>f(t) = t², w = 1.1: x = 1.21, y = 1.4641, z = 2.1436 (stored).</li>
+        <li>\(f'(y)f'(x)f'(w)=2(1.4641)\cdot2(1.21)\cdot2(1.1)=2.928\times2.42\times2.2=15.59\).</li>
+        <li>Check: z = w⁸, so dz/dw = 8w⁷ = 8 × 1.9487 = 15.59 ✓.</li>
+        <li>Recompute version for n = 3: f(w) is evaluated 3 times instead of once; for long chains the waste grows like n²/2.</li>
+      </ol></div>
+    </div>
+    <div data-widget="chainStoreRecompute"></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-mlp-backprop" data-part="Part 2 · Algorithms" data-title="Backprop in an MLP" data-stages="backward">
+  <div class="slide-head"><span class="kicker">6.5.4 · Back-propagation in a fully connected MLP</span><h2>Algorithms 6.3 &amp; 6.4: forward and backward for an MLP</h2><div class="stages"></div></div>
+  <p class="bigidea">Backward pass, layer by layer: start with \(\mathbf g=\nabla_{\hat{\mathbf y}}J\); at each layer <b>multiply by f′</b> (element-wise), read off the <b>weight gradient</b> \(\mathbf g\mathbf h^{(k-1)\top}\), then pass \(\mathbf W^{(k)\top}\mathbf g\) down.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \textbf{forward: }\ \mathbf h^{(0)}=\mathbf x;\ \ \mathbf a^{(k)}=\mathbf b^{(k)}+\mathbf W^{(k)}\mathbf h^{(k-1)};\ \ \mathbf h^{(k)}=f(\mathbf a^{(k)});\ \ \hat{\mathbf y}=\mathbf h^{(l)};\ \ J=L(\hat{\mathbf y},\mathbf y)+\lambda\Omega(\boldsymbol\theta) \]<span class="eqno">Algorithm 6.3</span>
+        \[ \textbf{backward: }\ \mathbf g\leftarrow\nabla_{\hat{\mathbf y}}J;\ \ \text{for }k=l,\dots,1:\ \ \mathbf g\leftarrow\mathbf g\odot f'(\mathbf a^{(k)});\ \ \nabla_{\mathbf b^{(k)}}J=\mathbf g+\lambda\nabla_{\mathbf b^{(k)}}\Omega;\ \ \nabla_{\mathbf W^{(k)}}J=\mathbf g\,\mathbf h^{(k-1)\top}+\lambda\nabla_{\mathbf W^{(k)}}\Omega;\ \ \mathbf g\leftarrow\mathbf W^{(k)\top}\mathbf g \]<span class="eqno">Algorithm 6.4</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Algorithm 6.3 maps the parameters to the loss \(L(\hat{\mathbf y},\mathbf y)\) for one (input, target) example, plus a regularizer Ω.</li>
+          <li>Algorithm 6.4 walks back: \(\mathbf g\) is always “the gradient w.r.t. the current layer’s output”. ⊙ = element-wise product (the activation’s slope gates the gradient).</li>
+          <li>These algorithms are simple but specialized. Modern software uses <b>general</b> backprop that works on any computational graph (symbolic computation data structures).</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>\(\mathbf a^{(k)}\)</dt><dd>Pre-activation of layer k (before f).</dd>
+        <dt>\(\mathbf h^{(k)}\)</dt><dd>Activation (output) of layer k.</dd>
+        <dt>⊙</dt><dd>Element-wise product.</dd>
+        <dt>Ω(θ)</dt><dd>Regularizer, e.g. sum of squared weights.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step (1-1-1 net)</h3><ol class="calc">
+        <li>x = 1, w₁ = 2, w₂ = 3, ReLU hidden, linear output, L = ½(ŷ − y)², y = 5, no biases.</li>
+        <li>Forward: a₁ = 2, h = 2, ŷ = 3·2 = 6, L = 0.5.</li>
+        <li>g = ŷ − y = 1. Output layer: ∇w₂ = g·h = 2. Pass down: g = w₂·g = 3.</li>
+        <li>Hidden: ReLU′(2) = 1 → g = 3; ∇w₁ = g·x = 3.</li>
+      </ol></div>
+    </div>
+    <div data-widget="mlpBackprop"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch06-1.html#/s-hidden">ReLU derivative (L4)</a> and <a href="ch06-1.html#/s-cost-mle">output gradient = prediction − target (L4)</a>.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch07.html#/s-l2">Weight decay’s gradient 2λW (L6)</a> and <a href="ch09.html#/s-conv-grad">gradients of convolution (L10)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-general" data-part="Part 2 · Algorithms" data-title="General back-propagation" data-stages="backward">
+  <div class="slide-head"><span class="kicker">6.5.6 · General back-propagation</span><h2>General backprop: sum over paths, done by table filling</h2><div class="stages"></div></div>
+  <p class="bigidea">Start with ∂z/∂z = 1, multiply by Jacobians going backward, and <b>sum</b> where paths meet. Expanding the chain rule naively is a sum over <b>exponentially many paths</b>; backprop’s <b>dynamic programming</b> keeps it linear.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \frac{\partial u^{(n)}}{\partial u^{(j)}}=\sum_{\substack{\text{paths }(u^{(\pi_1)},\dots,u^{(\pi_t)})\\ \pi_1=j,\ \pi_t=n}}\ \prod_{k=2}^{t}\frac{\partial u^{(\pi_k)}}{\partial u^{(\pi_{k-1})}} \]<span class="eqno">(6.55)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Gradient of z with respect to itself = 1. For each parent, multiply the current gradient by the Jacobian of the operation that produced the child. Keep going until you reach x; <b>sum</b> gradients that arrive by different paths.</li>
+          <li><b>Cost</b> (counting graph operations, each roughly equal): forward ≤ n nodes; backward adds one Jacobian-vector product per edge; a DAG has at most O(n²) edges → never more than <b>O(n²)</b>. Most networks are roughly chains → <b>O(n)</b>.</li>
+          <li>One graph “operation” can be huge (a matrix multiply with millions of entries), so runtime per op varies.</li>
+          <li>Naive expansion (6.55) = one term per path; the number of paths can grow <b>exponentially</b> with depth, redoing the same \(\partial u^{(i)}/\partial u^{(j)}\) many times.</li>
+          <li>Backprop = <b>table filling</b>: one slot per node storing ∂z/∂node, filled in order → <b>dynamic programming</b>.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Path</dt><dd>A chain of edges from node j to the output n.</dd>
+        <dt>Dynamic programming</dt><dd>Solve a big problem by storing answers to overlapping sub-problems and reusing them.</dd>
+        <dt>O(n) / O(n²)</dt><dd>Cost grows linearly / quadratically with the number of nodes n.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Diamond graph: a = 2w, b = 3w, z = a·b. Two paths from w to z.</li>
+        <li>Path via a: (∂z/∂a)(∂a/∂w) = b · 2. Path via b: (∂z/∂b)(∂b/∂w) = a · 3.</li>
+        <li>At w = 1 (a = 2, b = 3): 3·2 + 2·3 = 12. Check: z = 6w² → dz/dw = 12w = 12 ✓.</li>
+        <li>A graph of depth 30 with 2 nodes per layer has \(2^{30}\approx10^9\) paths, but only ~120 edges — backprop does ~120 multiplies.</li>
+      </ol></div>
+    </div>
+    <div data-widget="pathCount"></div>
+  </div>
+</section>
+
+<section class="slide" id="s-example" data-part="Part 2 · Algorithms" data-title="Example: training an MLP" data-stages="loss,backward,update">
+  <div class="slide-head"><span class="kicker">6.5.7 · Example: back-propagation for MLP training</span><h2>Full example: one hidden layer, cross-entropy + weight decay</h2><div class="stages"></div></div>
+  <p class="bigidea">Two paths lead from J to the weights: through the <b>cross-entropy</b> (back through softmax, matmul, ReLU) and through the <b>weight decay</b> (always \(2\lambda\mathbf W\)). Backward costs about the same as forward; memory is dominated by stored activations.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mathbf H=\max\{0,\mathbf X\mathbf W^{(1)}\},\qquad\mathbf U^{(2)}=\mathbf H\mathbf W^{(2)},\qquad J_{\text{MLE}}=\text{cross\_entropy}\big(\mathbf y,\mathbf U^{(2)}\big) \]
+        \[ J=J_{\text{MLE}}+\lambda\Big(\sum_{i,j}\big(W^{(1)}_{i,j}\big)^2+\sum_{i,j}\big(W^{(2)}_{i,j}\big)^2\Big) \]<span class="eqno">(6.56)</span>
+        \[ \nabla_{\mathbf W^{(2)}}J=\mathbf H^{\top}\mathbf G+2\lambda\mathbf W^{(2)},\qquad\mathbf G'=\big(\mathbf G\mathbf W^{(2)\top}\big)\odot\mathbf 1\big[\mathbf X\mathbf W^{(1)}&gt;0\big],\qquad\nabla_{\mathbf W^{(1)}}J=\mathbf X^{\top}\mathbf G'+2\lambda\mathbf W^{(1)} \]</div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Minibatch SGD: X is a minibatch design matrix, y its labels. No biases (to keep it simple); the graph language has <code>relu</code>, <code>matmul</code> and <code>cross_entropy</code> operations.</li>
+          <li>U⁽²⁾ are unnormalized log-probabilities; cross-entropy with the targets = maximum likelihood.</li>
+          <li><b>Weight-decay path</b>: adds \(2\lambda\mathbf W^{(i)}\) to each weight gradient.</li>
+          <li><b>Cross-entropy path</b>: G = gradient on U⁽²⁾. Short branch: \(\mathbf H^\top\mathbf G\) to W⁽²⁾ (matmul rule, 2nd argument). Long branch: \(\nabla_{\mathbf H}J=\mathbf G\mathbf W^{(2)\top}\) (matmul rule, 1st argument); ReLU zeroes entries where \(\mathbf X\mathbf W^{(1)}&lt;0\) → G′; then \(\mathbf X^\top\mathbf G'\) to W⁽¹⁾.</li>
+          <li>Cost: forward multiplies by each W, O(w) multiply-adds (w = number of weights); backward multiplies by each Wᵀ — same cost.</li>
+          <li>Memory: store the ReLU input until the backward pass returns: O(m·n_h).</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>G</dt><dd>Gradient of the loss w.r.t. the logits U⁽²⁾ (= (P − Y)/m for softmax cross-entropy).</dd>
+        <dt>\(\mathbf 1[\cdot]\)</dt><dd>Indicator: 1 where the condition holds, 0 elsewhere.</dd>
+        <dt>m, n_h</dt><dd>Minibatch size and number of hidden units.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step (shapes &amp; cost)</h3><ol class="calc">
+        <li>m = 128, inputs 784, n_h = 100, 10 classes: X 128×784, W⁽¹⁾ 784×100, H 128×100, W⁽²⁾ 100×10, G 128×10.</li>
+        <li>Weights w = 784·100 + 100·10 = 79 400 → forward ≈ 128 × 79 400 ≈ 10.2 million multiply-adds.</li>
+        <li>Backward: \(\mathbf H^\top\mathbf G\) (100×10), \(\mathbf G\mathbf W^{(2)\top}\) (128×100), \(\mathbf X^\top\mathbf G'\) (784×100) — the same order of work.</li>
+        <li>Stored for the backward pass: \(\mathbf X\mathbf W^{(1)}\), 128 × 100 = 12 800 numbers.</li>
+      </ol></div>
+    </div>
+    <div data-widget="mlpTrainExample"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch06-1.html#/s-softmax">Softmax cross-entropy (L4)</a> and <a href="ch05-1.html#/s-regularization">weight decay (L1)</a>.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch08-3.html#/s-sgd">SGD with learning-rate schedules (L8)</a>, <a href="ch07.html#/s-dropout">dropout (L6)</a> (masks in the backward pass too).</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-complications" data-part="Part 2 · Algorithms" data-title="Complications in practice" data-stages="backward">
+  <div class="slide-head"><span class="kicker">6.5.8 · Complications</span><h2>What real implementations must also handle</h2><div class="stages"></div></div>
+  <p class="bigidea">Real autodiff libraries go beyond the clean algorithm: <b>multi-output operations</b>, <b>memory-efficient summation</b>, many <b>data types</b>, <b>undefined gradients</b>, and <b>higher-order derivatives</b>.</p>
+  <div class="compare">
+    <div style="border-top:3px solid var(--s1)"><b>Multiple outputs</b>Max value <em>and</em> its index are best computed in one pass through memory → one operation with two outputs.</div>
+    <div style="border-top:3px solid var(--s2)"><b>Summation buffers</b>Backprop often adds many tensors. Computing each separately and then summing has a memory bottleneck; instead keep one buffer and add each value as it is computed.</div>
+    <div style="border-top:3px solid var(--s3)"><b>Data types</b>32-bit and 64-bit floats, integers… each needs a careful policy (e.g. no gradient through an integer index).</div>
+    <div style="border-top:3px solid var(--s7)"><b>Undefined gradients</b>Some operations have undefined gradients (e.g. ReLU exactly at 0, sqrt at 0); the library must track whether the requested gradient is defined.</div>
+    <div style="border-top:3px solid var(--s5)"><b>Higher-order derivatives</b>Hessians and other second derivatives need special, efficient methods (e.g. Hessian-vector products) — see the textbook.</div>
+  </div>
+  <div class="row2" style="margin-top:16px">
+    <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+      <dt>Autodiff</dt><dd>Automatic differentiation: software that builds and runs the backward graph for you (PyTorch, TensorFlow, JAX).</dd>
+      <dt>Buffer</dt><dd>A block of memory that accumulates partial results.</dd>
+      <dt>Hessian-vector product</dt><dd>Computing Hv without forming the huge Hessian H.</dd>
+    </dl></div>
+    <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+      <li>Summing 100 gradient tensors of 1 million floats each: storing all first needs 100 × 4 MB = 400 MB.</li>
+      <li>With one accumulation buffer: 4 MB (+ one tensor at a time).</li>
+      <li>sqrt at 0: \(\frac{d}{dx}\sqrt x=\frac{1}{2\sqrt x}\to\infty\) — undefined; that is why batch norm adds δ inside \(\sqrt{\delta+\sigma^2}\).</li>
+    </ol></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag fwd">Leads to</span><span><a href="ch08-6.html#/s-bn-how">The δ in batch normalization (L9)</a> and <a href="ch08-6.html#/s-cost">why full Hessians are too costly (L9)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-summary" data-part="Wrap-up" data-title="Summary: how it all connects" data-stages="forward,backward">
+  <div class="slide-head"><span class="kicker">Wrap-up</span><h2>Summary: how it all connects</h2><div class="stages"></div></div>
+  <p class="bigidea">Write the computation as a <b>graph</b>; run it forward and <b>store</b> the values; then apply the <b>chain rule backward</b>, once per edge, summing over paths. The gradient costs about one extra forward pass.</p>
+  <div class="card" style="padding:0;overflow:hidden"><div class="scroll-x"><table class="data-table">
+    <thead><tr><th>Idea</th><th>Rule</th><th>Why it matters</th></tr></thead>
+    <tbody>
+      <tr><td>Computational graph</td><td>nodes = variables, edges = “used to compute”</td><td>Any model becomes differentiable mechanically</td></tr>
+      <tr><td>Chain rule</td><td>\(\nabla_{\mathbf x}z=(\partial\mathbf y/\partial\mathbf x)^\top\nabla_{\mathbf y}z\)</td><td>One Jacobian-vector product per operation</td></tr>
+      <tr><td>Multiple paths</td><td>sum the gradients</td><td>Shared parameters (weight decay, RNNs, CNNs) just add up</td></tr>
+      <tr><td>Store vs. recompute</td><td>memory ↔ time</td><td>Backprop stores activations (O(m·n_h))</td></tr>
+      <tr><td>Dynamic programming</td><td>table of ∂z/∂node</td><td>Linear instead of exponential cost</td></tr>
+      <tr><td>MLP backward</td><td>\(\mathbf g\odot f'\), \(\mathbf g\mathbf h^\top\), \(\mathbf W^\top\mathbf g\)</td><td>The loop inside every training step</td></tr>
+    </tbody>
+  </table></div></div>
+  <div class="row3" style="margin-top:16px">
+    <div class="card plain"><h3><span class="dot"></span>Remember</h3><p>Backprop computes gradients; the optimizer learns. Forward cost ≈ backward cost.</p></div>
+    <div class="card plain"><h3><span class="dot"></span>Next lecture</h3><p><a href="ch07.html">Regularization</a>: now that we can train big networks, how do we stop them from overfitting?</p></div>
+    <div class="card fit"><h3><span class="dot"></span>Check yourself</h3><p>Ten quiz questions with explanations.</p><button class="btn primary" type="button" data-goto="s-quiz" style="margin-top:6px">Take the quiz →</button></div>
+  </div>
+</section>
+
+<section class="slide" id="s-quiz" data-part="Wrap-up" data-title="Check yourself (quiz)">
+  <div class="slide-head"><span class="kicker">Wrap-up</span><h2>Check yourself</h2><p class="lede">Pick an answer to see whether it is right and why.</p></div>
+  <div data-widget="quiz"></div>
+  <footer class="credits">Study notes for Deep Learning, chapter 6.5. Equation and algorithm numbers follow Goodfellow, Bengio &amp; Courville, <em>Deep Learning</em> (MIT Press, 2016). Explanations, diagrams and demos are original.</footer>
+</section>
+
+</main>
+</body>
+</html>
