@@ -1,0 +1,840 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Optimization for Training</title>
+<meta name="description" content="Interactive study slides for Deep Learning chapter 8.6–8.7: approximate second-order methods (Newton, conjugate gradients, BFGS, L-BFGS) and optimization strategies (batch norm, Polyak averaging, pretraining, model design, continuation and curriculum learning).">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232a78d6'/%3E%3Cpath d='M6 9c5 0 6 14 10 14s5-14 10-14' fill='none' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<link rel="stylesheet" href="css/style.css?v=6">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script defer src="js/core.js?v=6"></script>
+<script defer src="js/second-order.js?v=6"></script>
+<script defer src="js/meta.js?v=6"></script>
+<script defer src="js/quiz.js?v=6"></script>
+</head>
+<body>
+
+<header class="topbar">
+  <button id="menuBtn" class="icon-btn" type="button" aria-label="Open slide list">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+  </button>
+  <div class="brand">
+    <b>Optimization for Training</b>
+    <span>Deep Learning · Chapter 8.6 – 8.7 · interactive study slides</span>
+  </div>
+  <button id="modeBtn" class="icon-btn" type="button" title="Switch between slides and one long page">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+    <span class="txt">One page</span>
+  </button>
+  <button id="themeBtn" class="icon-btn" type="button" title="Toggle light / dark theme">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/></svg>
+    <span class="txt">Dark</span>
+  </button>
+  <div class="progress"></div>
+</header>
+
+<div class="layout">
+  <nav id="toc" class="sidebar" aria-label="Slides"></nav>
+  <div class="scrim"></div>
+
+  <main class="deck" id="deck">
+
+<!-- ============================================================ -->
+<section class="slide" id="s-title" data-part="intro" data-title="Welcome & roadmap">
+  <div class="slide-head">
+    <span class="kicker">Deep Learning · Chapter 8.6 – 8.7</span>
+    <h1>Optimization for Training</h1>
+    <p class="lede">Gradient descent is simple, but it can be slow, unstable, or stuck. This lecture answers one question:
+      <b>how do we make training faster and more reliable?</b> Part A changes <em>how we take each step</em>. Part B changes
+      <em>what we are stepping on</em>: the model, the starting point, the objective and the data.</p>
+  </div>
+
+  <div class="road">
+    <div class="card big">
+      <span class="kicker">Part A · 8.6</span>
+      <h4>Approximate second-order methods</h4>
+      <p class="note">Use the <b>curvature</b> of the loss, not just its slope, to choose better steps. The catch is that exact curvature is far too expensive for big networks.</p>
+      <ol>
+        <li>Newton's method and its saddle-point problem</li>
+        <li>Conjugate gradients: fixing the zig-zag</li>
+        <li>BFGS: approximate the inverse Hessian</li>
+        <li>L-BFGS: the same idea without the memory</li>
+      </ol>
+      <button class="btn primary go" type="button" data-goto="s-risk">Start Part A →</button>
+    </div>
+    <div class="card big">
+      <span class="kicker">Part B · 8.7</span>
+      <h4>Optimization strategies &amp; meta-algorithms</h4>
+      <p class="note">General tricks that wrap around <b>any</b> optimizer and make the problem itself easier to solve.</p>
+      <ol>
+        <li>Batch normalization</li>
+        <li>Polyak averaging</li>
+        <li>Supervised pretraining (and transfer / teacher hints)</li>
+        <li>Designing models to aid optimization</li>
+        <li>Continuation methods &amp; curriculum learning</li>
+      </ol>
+      <button class="btn primary go" type="button" data-goto="s-meta">Start Part B →</button>
+    </div>
+  </div>
+
+  <div class="howto">
+    <div><b>Navigate</b>Use <kbd>←</kbd> <kbd>→</kbd> or the buttons at the bottom. The menu lists every slide.</div>
+    <div><b>Play with demos</b>Every slide has a demo. Drag sliders, press Run, and click on plots.</div>
+    <div><b>Follow the loop</b>The chips under each title show which training step the idea changes. Click one to see the whole loop.</div>
+    <div><b>Read it as a page</b>“One page” shows every slide in one scroll. Your theme and view choice are remembered.</div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-loop" data-part="intro" data-title="The big picture: the training loop" data-stages="init,batch,forward,loss,backward,update,final">
+  <div class="slide-head">
+    <span class="kicker">Start here</span>
+    <h2>The big picture: where every idea plugs in</h2>
+    <p class="lede">Training a network means repeating the same loop thousands of times. Everything in this lecture improves one or more steps of this loop. Keep this map in mind: every later slide shows its position on it.</p>
+    <div class="stages"></div>
+  </div>
+  <div class="stack">
+    <div data-widget="loop"></div>
+    <div class="row3">
+      <div class="card plain"><h3><span class="dot"></span>Part A changes step 6</h3><p>Newton, conjugate gradients, BFGS and L-BFGS are different rules for <b>“given the gradient, where do I move?”</b> They use (approximate) curvature to choose both the direction and the step length.</p></div>
+      <div class="card plain"><h3><span class="dot"></span>Part B changes everything else</h3><p>Batch norm changes the <b>model</b>, pretraining changes the <b>start</b>, continuation changes the <b>objective</b>, curriculum changes the <b>data</b>, and Polyak averaging changes which <b>weights you keep</b>.</p></div>
+      <div class="card analogy"><h3><span class="dot"></span>Analogy</h3><p>Think of hiking down a mountain in fog. Part A is about better <b>footwork</b>: how far and in which direction to step. Part B is about better <b>trip planning</b>: a better map, a better trailhead, an easier route first.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-risk" data-part="A" data-title="What are we minimizing? J(θ)" data-stages="loss">
+  <div class="slide-head">
+    <span class="kicker">Part A · Setup</span>
+    <h2>What are we minimizing? The empirical risk J(θ)</h2>
+    <div class="stages"></div>
+  </div>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain">
+        <h3><span class="dot"></span>In plain words</h3>
+        <p>We would like the network to do well on <em>all possible</em> data, but we only have a training set. So we measure the error on every training example and <b>average</b> it. That average, J(θ), is the number training tries to push down.</p>
+        <p>Think of J as a <b>landscape</b>. Each setting of the weights θ is a location, and the height there is the average error. Every optimizer in this lecture is just a strategy for walking downhill on this landscape.</p>
+      </div>
+      <div class="math">\[ J(\boldsymbol\theta)=\mathbb{E}_{\mathbf{x},y\sim\hat p_{\text{data}}}\big[L(f(\mathbf{x};\boldsymbol\theta),y)\big]=\frac{1}{m}\sum_{i=1}^{m}L\big(f(\mathbf{x}^{(i)};\boldsymbol\theta),\,y^{(i)}\big) \]<span class="eqno">(8.25)</span></div>
+      <details class="decode"><summary>Decode the symbols</summary>
+        <dl>
+          <dt>\(\boldsymbol\theta\)</dt><dd>all the weights and biases of the network, stacked into one long vector</dd>
+          <dt>\(f(\mathbf{x};\boldsymbol\theta)\)</dt><dd>the network's prediction for input \(\mathbf x\)</dd>
+          <dt>\(L(\cdot, y)\)</dt><dd>the loss for one example: how wrong the prediction is compared with the true label \(y\)</dd>
+          <dt>\(m\)</dt><dd>number of training examples</dd>
+          <dt>\(\hat p_{\text{data}}\)</dt><dd>“the training set seen as a probability distribution”: every example equally likely</dd>
+        </dl>
+      </details>
+      <div class="card fit"><h3><span class="dot"></span>Where it fits in training</h3><p>This is the <b>loss</b> step of the loop. In practice we estimate it on a minibatch instead of all m examples. The lecture keeps this plain version so the formulas stay simple. Everything also works if you add regularization terms such as weight decay.</p></div>
+    </div>
+    <div data-widget="riskDemo"></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-taylor" data-part="A" data-title="Slope vs. curvature" data-stages="backward,update">
+  <div class="slide-head">
+    <span class="kicker">Part A · Key idea</span>
+    <h2>First-order vs. second-order information</h2>
+    <div class="stages"></div>
+  </div>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain">
+        <h3><span class="dot"></span>In plain words</h3>
+        <p>The <b>gradient</b> \(\nabla J\) is the <b>slope</b>. It tells you which way is downhill and how steep it is. It does <em>not</em> tell you how far to go, so gradient descent needs a hand-picked learning rate ε.</p>
+        <p>The <b>Hessian</b> \(\boldsymbol H\) is the <b>curvature</b>: how fast the slope itself changes. A big curvature means a narrow valley, so take small steps. A small curvature means a wide valley, so take big steps. <b>Second-order methods</b> use H to choose the step size automatically.</p>
+      </div>
+      <div class="math">\[ J(\theta)\approx \underbrace{J(\theta_0)}_{\text{height}}+\underbrace{J'(\theta_0)(\theta-\theta_0)}_{\text{slope: a line}}+\underbrace{\tfrac12 J''(\theta_0)(\theta-\theta_0)^2}_{\text{curvature: a parabola}} \]</div>
+      <p class="note">This is a Taylor series written for one weight. With many weights, J′ becomes the gradient vector and J″ becomes the Hessian matrix \(H_{ij}=\frac{\partial^2 J}{\partial\theta_i\partial\theta_j}\), as shown on the next slide.</p>
+      <details class="decode"><summary>What do the eigenvalues of H mean?</summary>
+        <dl>
+          <dt>all &gt; 0</dt><dd>bowl-shaped in every direction: a local minimum nearby (“positive definite”)</dd>
+          <dt>all &lt; 0</dt><dd>hill-shaped in every direction: a local maximum</dd>
+          <dt>mixed signs</dt><dd>up in some directions, down in others: a <b>saddle point</b></dd>
+          <dt>big ratio</dt><dd>largest/smallest eigenvalue = <b>condition number</b>: a long narrow valley, which slows gradient descent</dd>
+        </dl>
+      </details>
+      <div class="card analogy"><h3><span class="dot"></span>Analogy</h3><p>Hiking downhill blindfolded. With only the slope, you feel the tilt under your foot and guess a stride length. If you also feel the curvature (how the tilt changes as you shuffle forward), you can <b>estimate where the valley floor is</b> and jump there directly.</p></div>
+    </div>
+    <div data-widget="taylor1d"></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-newton" data-part="A" data-title="Newton's method" data-stages="backward,update">
+  <div class="slide-head">
+    <span class="kicker">Part A · 8.6.1</span>
+    <h2>Newton's method</h2>
+    <div class="stages"></div>
+  </div>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain">
+        <h3><span class="dot"></span>In plain words</h3>
+        <p>Around where you stand, replace the real landscape by a <b>bowl</b> (the second-order Taylor approximation). Then jump straight to the bottom of that bowl.</p>
+        <ul>
+          <li>If the real loss <b>is</b> a bowl (quadratic, with positive-definite H), you arrive in <b>one step</b>.</li>
+          <li>If it is convex but not exactly quadratic, the bowl is only approximate, so you <b>repeat</b>. That repetition is the Newton training algorithm.</li>
+        </ul>
+      </div>
+      <div class="math">\[ J(\boldsymbol\theta)\approx J(\boldsymbol\theta_0)+(\boldsymbol\theta-\boldsymbol\theta_0)^\top\nabla_{\boldsymbol\theta}J(\boldsymbol\theta_0)+\tfrac12(\boldsymbol\theta-\boldsymbol\theta_0)^\top\boldsymbol H(\boldsymbol\theta-\boldsymbol\theta_0) \]<span class="eqno">(8.26)</span></div>
+      <p class="note">Set the gradient of this bowl to zero: \(\nabla J(\boldsymbol\theta_0)+\boldsymbol H(\boldsymbol\theta-\boldsymbol\theta_0)=0\). Solving gives the Newton update:</p>
+      <div class="math">\[ \boldsymbol\theta^{*}=\boldsymbol\theta_0-\boldsymbol H^{-1}\nabla_{\boldsymbol\theta}J(\boldsymbol\theta_0) \]<span class="eqno">(8.27)</span></div>
+      <div class="card"><h3><span class="dot"></span>Why multiplying by H⁻¹ is clever</h3><p>H⁻¹ <b>rescales the gradient separately in every direction</b>. Steep, highly curved directions get shrunk, and flat directions get stretched. It works like an automatic, per-direction learning rate, so there is no ε to tune.</p></div>
+      <div class="card"><h3><span class="dot"></span>The algorithm (two steps, repeated)</h3>
+        <ol class="steps">
+          <li>Compute the gradient \(\boldsymbol g\) on a minibatch.</li>
+          <li>Compute the Hessian \(\boldsymbol H\) and its inverse \(\boldsymbol H^{-1}\).</li>
+          <li>Update: \(\boldsymbol\theta\leftarrow\boldsymbol\theta-\boldsymbol H^{-1}\boldsymbol g\). Go back to 1.</li>
+        </ol>
+        <p class="note" style="margin-top:8px">This only works as long as H stays <b>positive definite</b>. The next slide shows what happens when it does not.</p>
+      </div>
+    </div>
+    <div data-widget="playground" data-preset="newton" data-title="Gradient descent vs. Newton" data-sub="Raise the bowl's stretch κ: gradient descent zig-zags more and more, while Newton still lands in one step. Switch to the curvy bowl to see Newton iterate."></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-saddle" data-part="A" data-title="Newton at saddle points" data-stages="update">
+  <div class="slide-head">
+    <span class="kicker">Part A · 8.6.1</span>
+    <h2>When Newton goes wrong: saddle points &amp; regularization</h2>
+    <div class="stages"></div>
+  </div>
+  <div class="cols">
+    <div class="stack">
+      <div class="card warn">
+        <h3><span class="dot"></span>The problem</h3>
+        <p>Newton only looks for the point where the slope of its local model is <b>zero</b>. It cannot tell a valley floor from a hilltop or a saddle. Near a saddle point, some eigenvalues of H are <b>negative</b>, and Newton happily jumps <b>toward the saddle</b>. That is the wrong direction.</p>
+        <p>This matters a lot in deep learning: high-dimensional loss surfaces are full of saddle points.</p>
+      </div>
+      <div class="card plain">
+        <h3><span class="dot"></span>The fix: regularize the Hessian</h3>
+        <p>Add a constant α along the diagonal. This raises <b>every eigenvalue by α</b>, so if α is big enough they all become positive and the step points downhill again. Approximations of Newton's method such as the <b>Levenberg–Marquardt</b> algorithm use this idea.</p>
+      </div>
+      <div class="math">\[ \boldsymbol\theta^{*}=\boldsymbol\theta_0-\big[\boldsymbol H+\alpha\boldsymbol I\big]^{-1}\nabla_{\boldsymbol\theta}J(\boldsymbol\theta_0) \]<span class="eqno">(8.28)</span></div>
+      <div class="card"><h3><span class="dot"></span>The trade-off</h3>
+        <p>If the negative curvature is strong, α must be <b>large</b>. But then \(\boldsymbol H+\alpha\boldsymbol I\approx\alpha\boldsymbol I\), so the update becomes \(-\frac{1}{\alpha}\nabla J\): plain gradient descent with learning rate 1/α. With very strong negative curvature, the step can even be <b>smaller</b> than a well-tuned gradient descent step. All of Newton's advantage is gone.</p>
+      </div>
+    </div>
+    <div data-widget="playground" data-preset="saddle" data-title="Saddle point: Newton vs. regularized Newton" data-sub="All three start in the zone where H has a negative eigenvalue. Watch plain Newton get pulled into the saddle, then vary α."></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-cost" data-part="A" data-title="Why Newton doesn't scale" data-stages="update">
+  <div class="slide-head">
+    <span class="kicker">Part A · 8.6.1</span>
+    <h2>Why exact Newton doesn't scale to neural networks</h2>
+    <div class="stages"></div>
+  </div>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain">
+        <h3><span class="dot"></span>In plain words</h3>
+        <p>With k parameters, the Hessian is a <b>k × k</b> table: one entry for every <em>pair</em> of weights. Even small networks have millions of parameters.</p>
+        <ul>
+          <li><b>Memory:</b> k² numbers.</li>
+          <li><b>Compute:</b> inverting a k × k matrix costs about <b>O(k³)</b> operations.</li>
+          <li><b>Every step:</b> θ changes after each update, so H must be recomputed and re-inverted <b>every iteration</b>.</li>
+        </ul>
+        <p>Conclusion: only networks with a very small number of parameters can practically be trained with Newton's method.</p>
+      </div>
+      <div class="card fit">
+        <h3><span class="dot"></span>So what's the rest of Part A?</h3>
+        <p>Clever ways to get <em>some</em> of Newton's benefit without paying k² / k³:</p>
+        <ul>
+          <li><b>Conjugate gradients</b> never forms or inverts H at all.</li>
+          <li><b>BFGS</b> builds a cheap running estimate of H⁻¹ (still k² memory).</li>
+          <li><b>L-BFGS</b> builds that estimate from a few vectors (≈ k memory).</li>
+        </ul>
+      </div>
+    </div>
+    <div data-widget="newtonCost"></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-steepest" data-part="A" data-title="Line search & the zig-zag" data-stages="update">
+  <div class="slide-head">
+    <span class="kicker">Part A · 8.6.2 (motivation)</span>
+    <h2>Steepest descent with line search, and the zig-zag problem</h2>
+    <div class="stages"></div>
+  </div>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain">
+        <h3><span class="dot"></span>In plain words</h3>
+        <p>A natural upgrade to fixed-learning-rate gradient descent: point in the downhill direction, then <b>search along that line</b> for the lowest point (try several ε and keep the best). This is called a <b>line search</b>.</p>
+        <p>It sounds optimal, but it zig-zags. At the lowest point along a line, the slope <em>along that line</em> is exactly zero, so the new gradient is <b>perpendicular</b> to the line you just searched. Each new direction is at 90° to the previous one, and part of each step <b>undoes progress</b> made by the step before.</p>
+      </div>
+      <div class="math">\[ \epsilon^*=\arg\min_{\epsilon}\,J\big(\boldsymbol\theta-\epsilon\nabla_{\boldsymbol\theta}J(\boldsymbol\theta)\big) \]</div>
+      <div class="math">\[ \text{at the end of the line search: }\ \nabla_{\boldsymbol\theta}J(\boldsymbol\theta)\cdot\boldsymbol d_{t-1}=0\ \Rightarrow\ \boldsymbol d_t\perp\boldsymbol d_{t-1} \]</div>
+      <div class="card analogy"><h3><span class="dot"></span>Analogy</h3><p>Walking down a narrow canyon by always going <b>straight downhill</b>: you hit one wall, turn 90°, hit the other wall, turn 90° again… You bounce between the walls and only creep along the canyon floor.</p></div>
+    </div>
+    <div data-widget="playground" data-preset="steepest" data-title="Steepest descent with exact line search" data-sub="The small square markers show the 90° turns. Turn on plain gradient descent to compare."></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-cg" data-part="A" data-title="Conjugate gradients" data-stages="update">
+  <div class="slide-head">
+    <span class="kicker">Part A · 8.6.2</span>
+    <h2>Conjugate gradients: directions that don't undo each other</h2>
+    <div class="stages"></div>
+  </div>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain">
+        <h3><span class="dot"></span>In plain words</h3>
+        <p>Instead of following the pure gradient, <b>mix in a bit of the previous direction</b>. Choose the mix so the new direction does not spoil the minimization already done along the old one. Such directions are called <b>conjugate</b>.</p>
+        <p>Payoff: on a quadratic with k parameters, CG reaches the exact minimum in <b>at most k line searches</b>. In the 2-D demo that is just <b>2 steps</b>. It never computes H⁻¹.</p>
+      </div>
+      <div class="math">\[ \boldsymbol d_t=\nabla_{\boldsymbol\theta}J(\boldsymbol\theta)+\beta_t\,\boldsymbol d_{t-1} \]<span class="eqno">(8.29)</span>
+        \[ \text{conjugate:}\quad \boldsymbol d_t^{\top}\boldsymbol H\,\boldsymbol d_{t-1}=0 \]<span class="eqno">(8.30)</span></div>
+      <p class="note">β<sub>t</sub> controls how much of the old direction is added back. The book's algorithm box moves along \(-\boldsymbol g_t+\beta_t\boldsymbol\rho_{t-1}\), which is the same idea written as a downhill direction.</p>
+      <p class="note">Finding conjugate directions through the eigenvectors of H would be as expensive as Newton. Fortunately β can be computed from <b>gradients only</b>:</p>
+      <div class="math">\[ \text{Fletcher–Reeves:}\quad \beta_t=\frac{\nabla_{\boldsymbol\theta}J(\boldsymbol\theta_t)^{\top}\nabla_{\boldsymbol\theta}J(\boldsymbol\theta_t)}{\nabla_{\boldsymbol\theta}J(\boldsymbol\theta_{t-1})^{\top}\nabla_{\boldsymbol\theta}J(\boldsymbol\theta_{t-1})} \]<span class="eqno">(8.31)</span>
+      \[ \text{Polak–Ribière:}\quad \beta_t=\frac{\big(\nabla_{\boldsymbol\theta}J(\boldsymbol\theta_t)-\nabla_{\boldsymbol\theta}J(\boldsymbol\theta_{t-1})\big)^{\top}\nabla_{\boldsymbol\theta}J(\boldsymbol\theta_t)}{\nabla_{\boldsymbol\theta}J(\boldsymbol\theta_{t-1})^{\top}\nabla_{\boldsymbol\theta}J(\boldsymbol\theta_{t-1})} \]<span class="eqno">(8.32)</span></div>
+      <div class="card analogy"><h3><span class="dot"></span>Analogy for “conjugate”</h3><p>Imagine squashing the stretched valley until it becomes a perfectly round bowl. In a round bowl, perpendicular moves never interfere with each other. Conjugate directions are just “<b>perpendicular in that squashed space</b>”, and H is what does the squashing.</p></div>
+    </div>
+    <div data-widget="playground" data-preset="cg" data-title="Steepest descent vs. conjugate gradients" data-sub="Both use exact line searches. Count the steps: on the quadratic bowl CG finishes in 2."></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-ncg" data-part="A" data-title="Nonlinear conjugate gradients" data-stages="update">
+  <div class="slide-head">
+    <span class="kicker">Part A · 8.6.2</span>
+    <h2>Nonlinear conjugate gradients</h2>
+    <div class="stages"></div>
+  </div>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain">
+        <h3><span class="dot"></span>In plain words</h3>
+        <p>Real neural-network losses are <b>not quadratic</b>. Then the conjugate directions no longer guarantee that we stay at the minimum along the previous directions. The “at most k steps” promise is gone. Practical fixes:</p>
+        <ol class="steps">
+          <li><b>Occasional resets:</b> restart CG with a line search along the plain gradient, which throws away stale direction memory.</li>
+          <li><b>Warm start:</b> run a few iterations of SGD first, then switch to nonlinear CG.</li>
+          <li><b>Minibatches:</b> CG was traditionally a full-batch method, but minibatch versions have been used successfully for training neural nets.</li>
+        </ol>
+      </div>
+      <div class="card"><h3><span class="dot"></span>Fletcher–Reeves vs. Polak–Ribière</h3><p>On a quadratic with exact line searches the two formulas agree. On curvy losses they differ. Polak–Ribière tends to behave better: when the gradient barely changes between steps, its β drops toward 0, which acts like an <b>automatic reset</b>.</p></div>
+      <div class="card fit"><h3><span class="dot"></span>Where it fits in training</h3><p>CG replaces the <b>update rule</b>. It needs only gradients (O(k) memory), but every step needs a line search, which means several extra loss evaluations.</p></div>
+    </div>
+    <div data-widget="playground" data-preset="ncg" data-title="CG on a curvy (non-quadratic) valley" data-sub="Try both β formulas and the reset option. The banana valley is a classic hard test for optimizers."></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-bfgs" data-part="A" data-title="BFGS (quasi-Newton)" data-stages="update">
+  <div class="slide-head">
+    <span class="kicker">Part A · 8.6.3</span>
+    <h2>BFGS: Newton's power without computing H⁻¹</h2>
+    <div class="stages"></div>
+  </div>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain">
+        <h3><span class="dot"></span>In plain words</h3>
+        <p>The expensive part of Newton is \(\boldsymbol H^{-1}\). <b>Quasi-Newton</b> methods, of which BFGS (Broyden–Fletcher–Goldfarb–Shanno) is the most famous, keep a <b>running estimate</b> \(\boldsymbol M_t\approx\boldsymbol H^{-1}\) and refine it after every step with a cheap <b>low-rank update</b>.</p>
+        <p>How does it learn curvature without second derivatives? If moving by \(\boldsymbol s\) changed the gradient by \(\boldsymbol y\), then the curvature along \(\boldsymbol s\) is roughly “change in slope ÷ distance moved”. BFGS forces M to agree with this observation: \(\boldsymbol M_{t+1}\boldsymbol y=\boldsymbol s\).</p>
+      </div>
+      <div class="math">\[ \boldsymbol\rho_t=\boldsymbol M_t\,\boldsymbol g_t,\qquad \boldsymbol\theta_{t+1}=\boldsymbol\theta_t+\epsilon^{*}\boldsymbol\rho_t \]<span class="eqno">(8.33)</span></div>
+      <p class="note">A line search picks the step size ε* along this direction, and the sign is chosen so the step goes downhill (equivalently, move along \(-\boldsymbol M_t\boldsymbol g_t\)).</p>
+      <details class="decode"><summary>For the curious: the BFGS update of M</summary>
+        <div class="math">\[ \boldsymbol M_{t+1}=\big(\boldsymbol I-r\,\boldsymbol s\boldsymbol y^{\top}\big)\boldsymbol M_t\big(\boldsymbol I-r\,\boldsymbol y\boldsymbol s^{\top}\big)+r\,\boldsymbol s\boldsymbol s^{\top},\qquad r=\frac{1}{\boldsymbol y^{\top}\boldsymbol s} \]</div>
+        <p class="note">with \(\boldsymbol s=\boldsymbol\theta_{t+1}-\boldsymbol\theta_t\) and \(\boldsymbol y=\boldsymbol g_{t+1}-\boldsymbol g_t\). This is only a rank-2 correction, so it is cheap compared with inverting H, and M stays positive definite.</p>
+      </details>
+      <div class="row2">
+        <div class="card today"><h3><span class="dot"></span>Strength</h3><p>Like CG it uses line searches, but it does <b>not</b> need them to be very precise. It can spend less time refining each line search.</p></div>
+        <div class="card warn"><h3><span class="dot"></span>Weakness</h3><p>It must <b>store M</b>: k × k numbers, O(k²) memory. That is impossible for networks with millions of parameters.</p></div>
+      </div>
+    </div>
+    <div data-widget="playground" data-preset="bfgs" data-title="BFGS learns the curvature as it goes" data-sub="Below the map, compare BFGS's estimate M with the true H⁻¹. It gets close using gradients only. Then set <b>Line search → Rough</b>: CG needs many more steps (about 81 vs 11), while BFGS barely suffers (18 vs 8). That is the “less time refining each line search” advantage."></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-lbfgs" data-part="A" data-title="L-BFGS (limited memory)" data-stages="update">
+  <div class="slide-head">
+    <span class="kicker">Part A · 8.6.3</span>
+    <h2>L-BFGS: limited-memory BFGS</h2>
+    <div class="stages"></div>
+  </div>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain">
+        <h3><span class="dot"></span>In plain words</h3>
+        <p>Don't store M at all. Each step, <b>pretend the previous M was the identity</b> and rebuild the effect of M from only the last few (s, y) pairs. Each pair is just two vectors of length k.</p>
+        <ul>
+          <li>Memory: <b>O(mk)</b> with m pairs, instead of O(k²). With m = 1 this is the simplest version the lecture describes.</li>
+          <li>With <b>exact</b> line searches, the directions L-BFGS produces are mutually <b>conjugate</b>, just like CG.</li>
+          <li>Unlike CG, it stays well behaved when the line search only finds the minimum <b>approximately</b>.</li>
+          <li>Storing more pairs (bigger m) gives it more information about the Hessian.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3><span class="dot"></span>Part A at a glance</h3>
+        <div class="scroll-x">
+          <table class="data-table">
+            <thead><tr><th>Method</th><th>Extra memory</th><th>Per-step work</th><th>Needs line search?</th></tr></thead>
+            <tbody>
+              <tr><td>Gradient descent</td><td>none</td><td>1 gradient</td><td>no (fixed ε)</td></tr>
+              <tr><td>Newton</td><td>k² (H)</td><td>H + inverse: O(k³)</td><td>no</td></tr>
+              <tr><td>Conjugate gradients</td><td>k (previous direction)</td><td>gradient + line search</td><td>yes, precise</td></tr>
+              <tr><td>BFGS</td><td>k² (M)</td><td>O(k²) update</td><td>yes, rough is OK</td></tr>
+              <tr><td>L-BFGS</td><td>2mk (m pairs)</td><td>O(mk)</td><td>yes, rough is OK</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card today"><h3><span class="dot"></span>Today</h3><p>L-BFGS is still popular for smaller, <b>full-batch</b>, smooth problems, for example classic machine-learning models and some scientific and style-transfer problems. In big minibatch deep learning, noisy gradients spoil its curvature estimates, so SGD-style methods dominate.</p></div>
+    </div>
+    <div data-widget="playground" data-preset="lbfgs" data-title="BFGS vs. L-BFGS" data-sub="With a rough line search, more memory helps: m = 1 needs about 28 steps, m = 2 about 19, close to full BFGS (18). Now switch to an <b>exact</b> line search: L-BFGS matches BFGS step for step, because its directions become conjugate, as the lecture says."></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-race" data-part="A" data-title="Part A recap: optimizer playground" data-stages="update">
+  <div class="slide-head">
+    <span class="kicker">Part A · Recap</span>
+    <h2>Optimizer playground: everything from Part A</h2>
+    <p class="lede">Turn on any combination of methods, pick a surface, click to choose a start, and race them. Things to try:</p>
+    <div class="stages"></div>
+  </div>
+  <div class="cols">
+    <div class="stack">
+      <div class="card"><h3><span class="dot"></span>Experiments</h3>
+        <ol class="steps">
+          <li><b>Stretched bowl, κ = 20:</b> gradient descent crawls, Newton takes 1 step, CG and BFGS take 2.</li>
+          <li><b>Saddle:</b> click near the middle row. Newton converges to the saddle, while gradient descent and regularized Newton escape.</li>
+          <li><b>Banana:</b> Newton can fail where H is not positive definite. BFGS keeps M positive definite and gets through the valley.</li>
+          <li><b>Large GD learning rate:</b> push ε up until gradient descent diverges. Second-order methods have no ε to break.</li>
+        </ol>
+      </div>
+      <div class="card fit"><h3><span class="dot"></span>The big lesson of Part A</h3><p>Curvature information makes each step <b>much better</b>, but it is expensive to get, and it can be <b>misleading</b> near saddle points. For huge, noisy, saddle-filled deep-learning problems, first-order methods such as SGD, momentum and Adam usually win on cost. Part B attacks the problem from the other side: make the <b>landscape itself</b> easier.</p></div>
+    </div>
+    <div data-widget="playground" data-preset="all" data-title="Full playground"></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-meta" data-part="B" data-title="Strategies & meta-algorithms" data-stages="init,batch,forward,loss,final">
+  <div class="slide-head">
+    <span class="kicker">Part B · 8.7</span>
+    <h2>Optimization strategies &amp; meta-algorithms</h2>
+    <p class="lede">These are not new optimizers. They are <b>general templates</b> that can be specialized into algorithms, or <b>subroutines</b> that slot into almost any training procedure. You can combine all of them with SGD, Adam or anything from Part A.</p>
+    <div class="stages"></div>
+  </div>
+  <div class="row3">
+    <div class="card"><h3><span class="dot"></span>Batch normalization</h3><p>Changes the <b>model</b> so layers stop fighting each other when they are updated together.</p><button class="btn" type="button" data-goto="s-bn-problem">Go →</button></div>
+    <div class="card"><h3><span class="dot"></span>Polyak averaging</h3><p>Changes <b>which weights you keep</b>: the average of recent points instead of the last one.</p><button class="btn" type="button" data-goto="s-polyak">Go →</button></div>
+    <div class="card"><h3><span class="dot"></span>Supervised pretraining</h3><p>Changes the <b>starting point</b>: solve simpler models or tasks first, then build on them.</p><button class="btn" type="button" data-goto="s-pretrain">Go →</button></div>
+    <div class="card"><h3><span class="dot"></span>Designing models</h3><p>Choose an <b>architecture</b> whose landscape is easy: ReLU, skip connections, auxiliary heads.</p><button class="btn" type="button" data-goto="s-design">Go →</button></div>
+    <div class="card"><h3><span class="dot"></span>Continuation methods</h3><p>Change the <b>objective</b>: solve a blurred, easy version first and sharpen it gradually.</p><button class="btn" type="button" data-goto="s-continuation">Go →</button></div>
+    <div class="card"><h3><span class="dot"></span>Curriculum learning</h3><p>Change the <b>data order</b>: easy examples first, hard ones gradually.</p><button class="btn" type="button" data-goto="s-curriculum">Go →</button></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-bn-problem" data-part="B" data-title="Why layers interfere" data-stages="forward,backward,update">
+  <div class="slide-head">
+    <span class="kicker">Part B · 8.7.1 Batch normalization (motivation)</span>
+    <h2>Why deep networks are hard to update: layers interfere</h2>
+    <div class="stages"></div>
+  </div>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain">
+        <h3><span class="dot"></span>In plain words</h3>
+        <p>The gradient for each weight answers: “how should <em>this</em> weight change, <b>assuming every other layer stays fixed</b>?” But we update <b>all layers at the same time</b>. In a deep network the layers multiply together, so their changes interact and create effects the gradient never predicted.</p>
+      </div>
+      <div class="card"><h3><span class="dot"></span>The toy example from the lecture</h3>
+        <p>One unit per layer, no activation function. The output is linear in x but a <b>product</b> of the weights:</p>
+        <div class="math">\[ \hat y=x\,w_1w_2w_3\cdots w_l \]<span class="eqno">(8.34)</span></div>
+        <p>Update \(\boldsymbol w\leftarrow\boldsymbol w-\epsilon\boldsymbol g\). First-order theory says ŷ drops by \(\epsilon\,\boldsymbol g^{\top}\boldsymbol g\), so to drop it by 0.1 we would pick \(\epsilon=0.1/\boldsymbol g^{\top}\boldsymbol g\). What really happens:</p>
+        <div class="math">\[ \hat y_{\text{new}}=x(w_1-\epsilon g_1)(w_2-\epsilon g_2)\cdots(w_l-\epsilon g_l) \]<span class="eqno">(8.35)</span></div>
+        <p>Multiplying this out gives higher-order terms, up to order l, such as \(\epsilon^2 g_1g_2\prod_{i=3}^{l}w_i\). That term is tiny if the other weights are small, and <b>exponentially large</b> if they are bigger than 1.</p>
+      </div>
+      <div class="card warn"><h3><span class="dot"></span>Why that is a big deal</h3><p>The effect of updating one layer depends strongly on <b>all the other layers</b>, so choosing a good learning rate becomes very hard. Second-order methods can account for 2nd-order interactions, but they are expensive and approximate, and deep networks also have 3rd, 4th, … order interactions. An n-th order method for n &gt; 2 seems hopeless. We need a different idea: <b>change the model</b> instead of the optimizer.</p></div>
+    </div>
+    <div data-widget="chain"></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-bn-how" data-part="B" data-title="Batch norm: the recipe" data-stages="batch,forward">
+  <div class="slide-head">
+    <span class="kicker">Part B · 8.7.1</span>
+    <h2>Batch normalization: the recipe</h2>
+    <div class="stages"></div>
+  </div>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain">
+        <h3><span class="dot"></span>In plain words</h3>
+        <p>Take a layer's activations for a whole minibatch. For <b>each unit</b> (each column), subtract its average over the batch and divide by its standard deviation. Every unit then has <b>mean 0 and std 1</b> over the batch, <b>no matter what the earlier layers do</b>.</p>
+        <p>That is a <b>reparametrization</b>: it greatly reduces the problem of coordinating updates across many layers. It can be applied to any input or hidden layer.</p>
+      </div>
+      <div class="math">\[ \boldsymbol H'=\frac{\boldsymbol H-\boldsymbol\mu}{\boldsymbol\sigma} \]<span class="eqno">(8.36)</span>
+        \[ \boldsymbol\mu=\frac1m\sum_i\boldsymbol H_{i,:}\qquad \boldsymbol\sigma=\sqrt{\delta+\frac1m\sum_i(\boldsymbol H-\boldsymbol\mu)_i^2} \]<span class="eqno">(8.37–8.38)</span></div>
+      <details class="decode" open><summary>Decode the symbols</summary>
+        <dl>
+          <dt>\(\boldsymbol H\)</dt><dd>minibatch of activations as a matrix: <b>one row per example</b>, one column per unit</dd>
+          <dt>\(\boldsymbol\mu,\boldsymbol\sigma\)</dt><dd>vectors holding each unit's mean and standard deviation over the batch. They are <b>broadcast</b>: the same μ<sub>j</sub>, σ<sub>j</sub> are used in every row for column j</dd>
+          <dt>\(\delta\)</dt><dd>a tiny number such as 10⁻⁸ that avoids the undefined gradient of √z at z = 0 and division by zero</dd>
+          <dt>\(\boldsymbol H'\)</dt><dd>the normalized activations; the rest of the network uses H′ exactly as it used H before</dd>
+        </dl>
+      </details>
+      <div class="card fit"><h3><span class="dot"></span>Where it fits in training</h3><p>BN is <b>part of the model</b>, in the forward pass, and its statistics come from the current <b>minibatch</b>. The optimizer is unchanged. Because the layer below can no longer change this layer's input scale or offset, the cross-layer interference from the previous slide largely disappears.</p></div>
+    </div>
+    <div data-widget="bnSteps"></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-bn-backprop" data-part="B" data-title="Backprop through μ and σ" data-stages="backward">
+  <div class="slide-head">
+    <span class="kicker">Part B · 8.7.1</span>
+    <h2>The key trick: back-propagate through the normalization</h2>
+    <div class="stages"></div>
+  </div>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain">
+        <h3><span class="dot"></span>In plain words</h3>
+        <p>μ and σ are computed <em>from</em> H, and we <b>back-propagate through those computations</b> too. They are not treated as constants.</p>
+        <p>Consequence: the gradient can <b>never propose</b> an update whose only effect is to raise a unit's mean or standard deviation. The normalization would cancel such a change, so backprop gives that component of the gradient a value of <b>zero</b>. The lecture calls this the major innovation of batch norm.</p>
+      </div>
+      <div class="card"><h3><span class="dot"></span>What people did before</h3>
+        <ol class="steps">
+          <li><b>Add a penalty</b> to the cost that encourages normalized statistics. The result is usually <b>imperfect normalization</b>.</li>
+          <li><b>Renormalize after every gradient step.</b> This <b>wastes time</b>: the optimizer keeps proposing changes to mean and variance, and the renormalization keeps undoing them.</li>
+        </ol>
+        <p style="margin-top:8px">BN sidesteps both: the units are standardized <b>by definition</b>, so there is nothing to fight.</p>
+      </div>
+      <div class="card analogy"><h3><span class="dot"></span>Analogy</h3><p>Keeping a room at 20 °C. A penalty is like asking people politely not to touch the heater, so the temperature still drifts. Renormalizing is like someone keeps turning it up while you keep turning it down: lots of wasted effort. BN <b>removes the dial</b>, so nobody wastes energy trying.</p></div>
+    </div>
+    <div data-widget="bnApproaches"></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-bn-test" data-part="B" data-title="BN at test time" data-stages="batch,final">
+  <div class="slide-head">
+    <span class="kicker">Part B · 8.7.1</span>
+    <h2>Batch norm at test time: running averages</h2>
+    <div class="stages"></div>
+  </div>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain">
+        <h3><span class="dot"></span>In plain words</h3>
+        <p>During training, μ and σ come from the current minibatch. At test time we often want to predict <b>one example at a time</b>, and its output should not depend on what else happens to be in the batch.</p>
+        <p>So during training we keep <b>running averages</b> of μ and σ, and at test time we use those fixed values instead.</p>
+      </div>
+      <div class="math">\[ \hat{\boldsymbol\mu}\leftarrow 0.9\,\hat{\boldsymbol\mu}+0.1\,\boldsymbol\mu_{\text{batch}},\qquad \hat{\boldsymbol\sigma}^2\leftarrow 0.9\,\hat{\boldsymbol\sigma}^2+0.1\,\boldsymbol\sigma^2_{\text{batch}} \]</div>
+      <p class="note">0.1 is a typical “momentum” value (it is PyTorch's default). Any exponential moving average works.</p>
+      <div class="card today"><h3><span class="dot"></span>Practical tip</h3><p>In PyTorch, <code>model.train()</code> uses batch statistics and updates the running averages, while <code>model.eval()</code> switches to the running averages. Forgetting <code>model.eval()</code> before testing is a classic bug, and the demo shows why.</p></div>
+    </div>
+    <div data-widget="runningStats"></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-bn-gamma" data-part="B" data-title="γ, β and where to put BN" data-stages="forward">
+  <div class="slide-head">
+    <span class="kicker">Part B · 8.7.1</span>
+    <h2>Keeping the network expressive: γ and β, and where BN goes</h2>
+    <div class="stages"></div>
+  </div>
+  <div class="cols">
+    <div class="stack">
+      <div class="card">
+        <h3><span class="dot"></span>Back to the linear toy network</h3>
+        <p>Normalize \(h_{l-1}\) and the output becomes simply \(\hat y=w_l\hat h_{l-1}\). Whatever the lower layers do, \(\hat h_{l-1}\) stays a unit Gaussian, so learning becomes <b>very easy</b>. The rare exceptions: setting a lower weight to 0 makes the output degenerate, and flipping a weight's sign flips the relationship.</p>
+        <p>The catch: in a <em>linear</em> network the lower layers can only change mean and variance, and those are now normalized away, so the lower layers become <b>useless</b>. In a real network with <b>nonlinear</b> activations, lower layers still perform useful nonlinear transformations, so they keep their value.</p>
+      </div>
+      <div class="card plain">
+        <h3><span class="dot"></span>γ and β: give the freedom back</h3>
+        <p>Forcing mean 0 and std 1 might limit what a layer can express. So we use</p>
+        <div class="math">\[ \gamma\boldsymbol H'+\boldsymbol\beta \]</div>
+        <p>where γ and β are <b>learned</b>. “Wait, didn't we just remove the mean, only to let β set it again?” Yes, and that is the point. Both versions can represent the <b>same functions</b>, but the <b>learning dynamics</b> differ:</p>
+        <ul>
+          <li><b>Old:</b> the mean of H depends on a complicated interaction of <em>all</em> the layers below.</li>
+          <li><b>New:</b> the mean of γH′ + β is decided by <b>β alone</b>, one parameter that is easy for gradient descent to control.</li>
+        </ul>
+      </div>
+      <div class="card fit">
+        <h3><span class="dot"></span>Where to put it</h3>
+        <ul>
+          <li>A layer computes \(\phi(\boldsymbol{XW}+\boldsymbol b)\). Normalize <b>XW + b, not X</b>. In fact, drop b and use \(\phi(\mathrm{BN}(\boldsymbol{XW}))\), because b is subtracted out by μ and β already does its job. (Try the “shift” slider on the recipe slide: Ĥ never moves.)</li>
+          <li><b>Convolutional nets:</b> use the same μ and σ at <b>every spatial location</b> of a feature map, so the map's statistics do not depend on position.</li>
+        </ul>
+      </div>
+    </div>
+    <div data-widget="cnnBN"></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-polyak" data-part="B" data-title="Polyak averaging" data-stages="update,final">
+  <div class="slide-head">
+    <span class="kicker">Part B · 8.7.3</span>
+    <h2>Polyak averaging</h2>
+    <div class="stages"></div>
+  </div>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain">
+        <h3><span class="dot"></span>In plain words</h3>
+        <p>Instead of keeping only the <b>last</b> point the optimizer visited, keep the <b>average</b> of the points it visited. If the optimizer keeps leaping back and forth across a valley without ever landing on the bottom, the average of its positions on both sides sits <b>close to the bottom</b>.</p>
+      </div>
+      <div class="math">\[ \hat{\boldsymbol\theta}^{(t)}=\frac1t\sum_i\boldsymbol\theta^{(i)} \]</div>
+      <p class="note">On convex problems, for example gradient descent on a convex loss, this has strong convergence guarantees.</p>
+      <div class="card warn"><h3><span class="dot"></span>Non-convex problems</h3><p>The path can wander through very different regions, and points from the <b>distant past</b> may be separated from the current one by big barriers in the loss, so averaging them in is not useful. So use an <b>exponentially decaying running average</b>, which gradually forgets the past:</p>
+        <div class="math">\[ \hat{\boldsymbol\theta}^{(t)}=\alpha\,\hat{\boldsymbol\theta}^{(t-1)}+(1-\alpha)\,\boldsymbol\theta^{(t)} \]<span class="eqno">(8.39)</span></div></div>
+      <div class="card today"><h3><span class="dot"></span>Today</h3><p>Keeping an exponential moving average (EMA) of the weights, and evaluating with the averaged copy, is a widely used trick in modern training, for example in image-generation models. It costs one extra copy of θ. The optimizer itself does not change.</p></div>
+    </div>
+    <div data-widget="polyak"></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-pretrain" data-part="B" data-title="Supervised pretraining" data-stages="init">
+  <div class="slide-head">
+    <span class="kicker">Part B · 8.7.4</span>
+    <h2>Supervised pretraining: solve easier problems first</h2>
+    <div class="stages"></div>
+  </div>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain">
+        <h3><span class="dot"></span>In plain words</h3>
+        <p>Sometimes training the full model directly on the full task is <b>too ambitious</b>. It can be better to</p>
+        <ul>
+          <li>train a <b>simpler model</b> first and then make it more complex, or</li>
+          <li>train on a <b>simpler task</b> first and then move to the real one.</li>
+        </ul>
+        <p>All such “simple first” strategies are called <b>pretraining</b>.</p>
+      </div>
+      <div class="card"><h3><span class="dot"></span>Greedy algorithms</h3>
+        <p>A <b>greedy</b> algorithm splits a problem into parts and solves each part <b>on its own</b>. Combining the individually-best parts is not guaranteed to be the best overall, but it is <b>much cheaper</b> and usually good enough.</p>
+        <p>Then a <b>fine-tuning</b> stage optimizes everything jointly. Starting the joint optimization from the greedy solution can greatly speed it up and improve the result.</p>
+      </div>
+      <div class="card fit"><h3><span class="dot"></span>Where it fits in training</h3><p>Pretraining is a smarter <b>initialization</b>. It puts θ in a region where ordinary local descent can find a good solution. Why should it help? The hypothesis is that it gives <b>better guidance to the intermediate layers</b> of a deep hierarchy.</p></div>
+    </div>
+    <div data-widget="pretrain"></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-pretrain-variants" data-part="B" data-title="Transfer learning & teacher hints" data-stages="init,loss">
+  <div class="slide-head">
+    <span class="kicker">Part B · 8.7.4</span>
+    <h2>Variations: deeper init, transfer learning, teacher → student hints</h2>
+    <div class="stages"></div>
+  </div>
+  <div class="cols">
+    <div class="stack">
+      <div class="card">
+        <h3><span class="dot"></span>1 · Initialize a deeper network from a shallower one</h3>
+        <p>Pretrain a whole deep conv net with 11 weight layers. Copy its first 4 and last 3 layers into a much deeper net with up to 19 weight layers. Initialize the middle randomly, then train everything jointly. Another option: give each new stage both the raw input <em>and</em> the outputs of the previously trained stages.</p>
+      </div>
+      <div class="card">
+        <h3><span class="dot"></span>2 · Transfer learning</h3>
+        <p>Pretrain an 8-layer conv net on one set of tasks (part of the 1,000 ImageNet classes). Build a same-size network for <b>different</b> classes, copy the <b>first k layers</b>, and initialize the upper layers randomly. Then train it jointly on the new task, which has <b>fewer examples</b>.</p>
+      </div>
+      <div class="card">
+        <h3><span class="dot"></span>3 · Teacher → student (hints)</h3>
+        <p>Train a <b>wide, shallow</b> teacher, which is easy to optimize. Then train a <b>thin, deep</b> student (11–19 layers) to predict the task output <b>and</b>, through extra regressor parameters, the teacher's <b>middle layer</b>. These hints tell the student's hidden layers how to be used.</p>
+        <div class="math">\[ \text{conceptually:}\quad \mathcal L=\mathcal L_{\text{task}}(\hat y,y)+\lambda\,\big\|\,\boldsymbol h^{\text{teacher}}_{\text{mid}}-r\big(\boldsymbol h^{\text{student}}_{\text{mid}}\big)\big\|^2 \]</div>
+        <p class="note">A thin, deep network looks harder to train, but it may generalize better and costs far less to run if it has few parameters.</p>
+      </div>
+      <div class="card today"><h3><span class="dot"></span>Today</h3><p>These ideas are everywhere: starting from a <b>pretrained backbone</b> and fine-tuning it (transfer learning), and training small students from big teachers (<b>knowledge distillation</b>).</p></div>
+    </div>
+    <div data-widget="pretrainVariants"></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-design" data-part="B" data-title="Designing models to aid optimization" data-stages="forward,backward,loss">
+  <div class="slide-head">
+    <span class="kicker">Part B · 8.7.5</span>
+    <h2>Designing models to aid optimization</h2>
+    <div class="stages"></div>
+  </div>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain">
+        <h3><span class="dot"></span>The big claim</h3>
+        <p>In practice it is <b>more important to choose a model family that is easy to optimize</b> than to use a powerful optimizer. Most of the progress of the last 30 years came from changing the <b>model</b>, not the optimizer. SGD with momentum, already used in the 1980s, is still used in state-of-the-art systems.</p>
+      </div>
+      <div class="card">
+        <h3><span class="dot"></span>Design choices that help</h3>
+        <ul>
+          <li><b>Mostly linear pieces:</b> linear transformations between layers, and activations that are differentiable almost everywhere with a <b>significant slope</b> over large regions. ReLU, maxout and the LSTM all move toward linearity, unlike sigmoid networks. Gradients then flow through many layers, as long as the Jacobians have reasonable singular values.</li>
+          <li><b>Local information points to far solutions:</b> a linear function keeps increasing in one direction. Even when the output is very wrong, the gradient clearly says which way to move. Modern nets are designed so that <em>local</em> gradients point toward <em>distant</em> solutions.</li>
+          <li><b>Skip connections:</b> shorten the path from low layers to the output, which reduces vanishing gradients.</li>
+          <li><b>Auxiliary heads</b> (GoogLeNet, deeply-supervised nets): extra copies of the output attached to middle layers and trained on the same task, so lower layers get a <b>large gradient</b>. They are thrown away after training.</li>
+        </ul>
+      </div>
+      <div data-widget="actShapes"></div>
+    </div>
+    <div data-widget="gradFlow"></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-continuation" data-part="B" data-title="Continuation methods" data-stages="init,loss">
+  <div class="slide-head">
+    <span class="kicker">Part B · 8.7.6</span>
+    <h2>Continuation methods: start with an easy version of the problem</h2>
+    <div class="stages"></div>
+  </div>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain">
+        <h3><span class="dot"></span>In plain words</h3>
+        <p>Some difficulties come from the <b>global shape</b> of the loss, and no clever local step can fix them. The main strategy is to <b>start somewhere</b> connected to the solution by a short path that local descent can find.</p>
+        <p>Continuation builds a <b>series of loss functions</b> over the same parameters, from easy to hard. Each problem is solved starting from the previous answer:</p>
+        <div class="math">\[ J^{(0)},\,J^{(1)},\,\dots,\,J^{(n)}=J \]</div>
+        <p>“Easier” means <b>well behaved over more of θ-space</b>. The answer to each problem is a good starting point for the next.</p>
+      </div>
+      <div class="card"><h3><span class="dot"></span>The classic recipe: blur it</h3>
+        <p>Make an easier J by <b>averaging it over nearby points</b>, a Gaussian blur, approximated by sampling:</p>
+        <div class="math">\[ J^{(i)}(\boldsymbol\theta)=\mathbb{E}_{\boldsymbol\theta'\sim\mathcal N(\boldsymbol\theta';\,\boldsymbol\theta,\,\sigma^{(i)2})}\,J(\boldsymbol\theta') \]<span class="eqno">(8.40)</span></div>
+        <p>Many bumpy non-convex functions become <b>approximately convex</b> when blurred, yet the blur keeps enough information about where the global minimum is. Then reduce σ step by step.</p>
+      </div>
+      <div class="card analogy"><h3><span class="dot"></span>Analogy</h3><p><b>Squint</b> at a mountain range: the little bumps disappear and you see the big valley. Walk toward it, then slowly open your eyes and fine-tune your position among the details.</p></div>
+    </div>
+    <div data-widget="continuation" data-presets="wiggly"></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-continuation-fail" data-part="B" data-title="When continuation fails" data-stages="init,loss">
+  <div class="slide-head">
+    <span class="kicker">Part B · 8.7.6</span>
+    <h2>When continuation fails, and why it still helps</h2>
+    <div class="stages"></div>
+  </div>
+  <div class="cols">
+    <div class="stack">
+      <div class="card warn">
+        <h3><span class="dot"></span>Three ways it can break</h3>
+        <ol class="steps">
+          <li><b>Works, but too expensive.</b> The blurred sequence may track the global minimum perfectly but need so many stages that the total cost stays high. NP-hard problems remain NP-hard.</li>
+          <li><b>Never becomes convex.</b> Some functions don't get nicer no matter how much you blur. Example: \(J(\theta)=-\theta^2\).</li>
+          <li><b>Convex, but tracks to the wrong place.</b> After blurring, the minimum may lead to a <b>local</b> rather than the global minimum of the original function.</li>
+        </ol>
+        <p class="note" style="margin-top:6px">Cases 2 and 3 mean the method is simply not applicable to that problem.</p>
+      </div>
+      <div class="card today">
+        <h3><span class="dot"></span>Why it is still useful</h3>
+        <p>Continuation was invented to beat <b>local minima</b>, and local minima are no longer believed to be the main problem in neural-network training. Easier objectives still help, because they can</p>
+        <ul>
+          <li>eliminate <b>flat regions</b>,</li>
+          <li>reduce the <b>variance</b> of gradient estimates,</li>
+          <li>improve the <b>conditioning</b> of the Hessian,</li>
+          <li>make local update directions point more toward the global solution.</li>
+        </ul>
+      </div>
+    </div>
+    <div data-widget="continuation" data-presets="hole,negsq,wiggly" data-title="Try the failure cases" data-sub="Choose a loss function, then run continuation and plain gradient descent from the same start."></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-curriculum" data-part="B" data-title="Curriculum learning" data-stages="batch,loss">
+  <div class="slide-head">
+    <span class="kicker">Part B · 8.7.6</span>
+    <h2>Curriculum learning (shaping)</h2>
+    <div class="stages"></div>
+  </div>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain">
+        <h3><span class="dot"></span>In plain words</h3>
+        <p>Plan learning like a school course: start with <b>simple concepts</b>, then move to more complex ones that <b>build on</b> them. The lecture notes this matches how humans teach.</p>
+      </div>
+      <div class="card"><h3><span class="dot"></span>Why it is a continuation method</h3><p>The early objectives \(J^{(i)}\) are made easier by increasing the influence of <b>simple examples</b>, either by giving their losses <b>larger weights</b> or by <b>sampling them more often</b>. The final objective is the ordinary loss over the full training set.</p></div>
+      <div class="card today"><h3><span class="dot"></span>The surprising result</h3><p>In the experiment discussed in the lecture, where harder examples have longer-term dependencies, a <b>deterministic</b> curriculum (easy first, then hard) gave <b>no improvement</b> over ordinary training. A <b>stochastic</b> curriculum did much better: always a random mix of easy and hard examples, with the <em>average share</em> of hard ones gradually increased.</p></div>
+      <div class="card analogy"><h3><span class="dot"></span>Analogy</h3><p>A language course that only drills the alphabet for a month, then only grammar, then only essays, makes you forget earlier skills and struggle at each jump. A course that mixes a little of everything, and shifts toward harder material week by week, works better.</p></div>
+    </div>
+    <div data-widget="curriculum"></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-summary" data-part="end" data-title="Putting it all together" data-stages="init,batch,forward,loss,backward,update,final">
+  <div class="slide-head">
+    <span class="kicker">Wrap-up</span>
+    <h2>Putting it all together</h2>
+    <p class="lede">One table connecting every idea to the training loop, the problem it solves, and what it costs.</p>
+    <div class="stages"></div>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div class="scroll-x">
+      <table class="data-table">
+        <thead><tr><th>Technique</th><th>Training step it changes</th><th>Problem it attacks</th><th>Cost / catch</th><th>Where you see it today</th></tr></thead>
+        <tbody>
+          <tr><td>Newton's method</td><td><span class="pill">Update θ</span></td><td>Gradient descent ignores curvature, so it needs ε and zig-zags</td><td>k² memory, k³ compute; attracted to saddles</td><td>Small models only</td></tr>
+          <tr><td>Regularized Newton</td><td><span class="pill">Update θ</span></td><td>Negative curvature near saddle points</td><td>Large α reduces it to gradient descent</td><td>Levenberg–Marquardt</td></tr>
+          <tr><td>Conjugate gradients</td><td><span class="pill">Update θ</span></td><td>Zig-zag of steepest descent</td><td>Precise line searches; resets on non-quadratic losses</td><td>Occasionally, incl. minibatch variants</td></tr>
+          <tr><td>BFGS</td><td><span class="pill">Update θ</span></td><td>Approximates Newton without inverting H</td><td>k² memory</td><td>Small models</td></tr>
+          <tr><td>L-BFGS</td><td><span class="pill">Update θ</span></td><td>BFGS memory</td><td>Noisy minibatch gradients hurt it</td><td>Full-batch, smaller problems</td></tr>
+          <tr><td>Batch normalization</td><td><span class="pill">Forward</span><span class="pill">Backward</span></td><td>Layers interfere when all are updated together</td><td>Depends on batch statistics; needs running averages at test time</td><td>Very common in CNNs; related norms elsewhere</td></tr>
+          <tr><td>Polyak averaging</td><td><span class="pill">Update θ</span><span class="pill">Final θ</span></td><td>Optimizer bounces around the minimum</td><td>One extra copy of θ</td><td>EMA of weights</td></tr>
+          <tr><td>Supervised pretraining</td><td><span class="pill">Init θ</span></td><td>Deep model too hard to train from scratch</td><td>Extra training stages; greedy is not optimal</td><td>Pretrained backbones, fine-tuning</td></tr>
+          <tr><td>Teacher hints</td><td><span class="pill">Init θ</span><span class="pill">Loss</span></td><td>Thin, deep student is hard to optimize</td><td>Need a teacher network</td><td>Knowledge distillation</td></tr>
+          <tr><td>Model design</td><td><span class="pill">Forward</span><span class="pill">Backward</span></td><td>Vanishing gradients, unhelpful local information</td><td>None; just better choices</td><td>ReLU, residual nets, LSTMs, aux heads</td></tr>
+          <tr><td>Continuation</td><td><span class="pill">Init θ</span><span class="pill">Loss</span></td><td>Bad global structure of J (local minima, flat regions)</td><td>Many stages; can track the wrong minimum</td><td>Smoothing, annealing ideas</td></tr>
+          <tr><td>Curriculum learning</td><td><span class="pill">Minibatch</span><span class="pill">Loss</span></td><td>Hard examples first are too hard</td><td>Need a difficulty measure; stochastic beats deterministic</td><td>Data scheduling</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="row3" style="margin-top:16px">
+    <div class="card plain"><h3><span class="dot"></span>One sentence for Part A</h3><p>Curvature makes each step smarter, but exact curvature is too <b>expensive</b> and can be <b>misleading</b> at saddles, so we approximate it (CG, BFGS, L-BFGS) or skip it.</p></div>
+    <div class="card plain"><h3><span class="dot"></span>One sentence for Part B</h3><p>Often the best way to optimize better is to make the <b>problem easier</b>: normalize layers, average the path, start from a pretrained point, design gradient-friendly models, and go from easy to hard.</p></div>
+    <div class="card fit"><h3><span class="dot"></span>Next</h3><p>Test yourself on the next slide. Each answer comes with an explanation.</p><button class="btn primary" type="button" data-goto="s-quiz" style="margin-top:6px">Take the quiz →</button></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-quiz" data-part="end" data-title="Check yourself (quiz)">
+  <div class="slide-head">
+    <span class="kicker">Wrap-up</span>
+    <h2>Check yourself</h2>
+    <p class="lede">13 questions covering the whole lecture. Pick an answer to see whether it is right and why.</p>
+  </div>
+  <div data-widget="quiz"></div>
+  <footer class="credits">
+    Study notes for Deep Learning, chapter 8.6–8.7 (“Optimization for Training”). Equation numbers follow Goodfellow, Bengio &amp; Courville, <em>Deep Learning</em> (MIT Press, 2016).
+    Explanations, diagrams and demos were written for personal study and are not copies of the lecture slides.
+  </footer>
+</section>
+
+  </main>
+</div>
+
+<nav class="navbar" aria-label="Slide navigation">
+  <button id="prevBtn" class="nav-btn" type="button" aria-label="Previous slide">← <span class="txt">Previous</span></button>
+  <div id="where" class="where"></div>
+  <button id="nextBtn" class="nav-btn primary" type="button" aria-label="Next slide"><span class="txt">Next</span> →</button>
+</nav>
+
+</body>
+</html>
