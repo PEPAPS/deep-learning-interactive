@@ -620,7 +620,7 @@ a.toc-item { text-decoration: none; }
 .calc .math { margin: 6px 0; }
 .calcbox {
   font-family: var(--mono); font-size: .76rem; line-height: 1.6; background: var(--surface-2); border: 1px solid var(--border);
-  border-radius: 10px; padding: 8px 12px; overflow-x: auto; white-space: pre; color: var(--text);
+  border-radius: 10px; padding: 8px 12px; overflow-x: auto; white-space: pre-wrap; overflow-wrap: break-word; color: var(--text);
 }
 .calcbox b { color: var(--accent); font-weight: 700; }
 .calcbox .c { color: var(--muted); }
@@ -631,3 +631,24 @@ a.toc-item { text-decoration: none; }
 .gridbtns button { text-align: left; border: 1px solid var(--border); background: var(--surface); border-radius: 9px; padding: 7px 10px; font-size: .82rem; cursor: pointer; color: var(--text); }
 .gridbtns button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
 @media (max-width: 640px) { .card.terms dl { grid-template-columns: minmax(0, 1fr); gap: 2px; } .card.terms dd { margin-bottom: 6px; } }
+
+/* ---------- number grids (CNN / RNN demos) ---------- */
+.grids { display: flex; flex-wrap: wrap; gap: 12px 14px; align-items: flex-start; }
+.gwrap { min-width: 0; }
+.gcap { font-size: .74rem; color: var(--text-2); margin-bottom: 4px; font-weight: 600; }
+.gop { align-self: center; font-size: 1.15rem; color: var(--muted); padding-top: 16px; }
+.cgrid { display: inline-grid; gap: 2px; font-family: var(--mono); font-size: .68rem; max-width: 100%; }
+.cgrid .cell {
+  width: var(--cs, 26px); height: var(--cs, 26px); display: flex; align-items: center; justify-content: center;
+  border-radius: 4px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+  font-variant-numeric: tabular-nums; overflow: hidden; white-space: nowrap; user-select: none;
+}
+.cgrid .cell.pad { border-style: dashed; background: transparent; color: var(--muted); }
+.cgrid .cell.dim { opacity: .35; }
+.cgrid .cell.hl { box-shadow: inset 0 0 0 2px var(--accent); font-weight: 700; }
+.cgrid .cell.hl2 { box-shadow: inset 0 0 0 2px var(--s2); font-weight: 700; }
+.cgrid.click .cell { cursor: pointer; }
+.cgrid.click .cell:hover { box-shadow: inset 0 0 0 2px var(--text-2); }
+.unitrow { display: flex; gap: 3px; flex-wrap: wrap; align-items: center; font-family: var(--mono); font-size: .72rem; }
+.unitrow > .rl { width: 92px; flex: none; font-family: var(--font); font-size: .74rem; color: var(--text-2); font-weight: 600; }
+.wcanvas { width: 100%; display: block; }

@@ -1,0 +1,623 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Convolutional Networks</title>
+<meta name="description" content="Interactive notes for Deep Learning chapter 9: the convolution operation, sparse interactions, parameter sharing, equivariance, pooling, the infinitely strong prior, multichannel, strided and padded convolution, locally connected and tiled layers, gradients, data types and a complete CNN.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232a78d6'/%3E%3Cpath d='M6 9c5 0 6 14 10 14s5-14 10-14' fill='none' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<link rel="stylesheet" href="../css/style.css?v=14">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script defer src="../js/core.js?v=14"></script>
+<script defer src="../js/course.js?v=14"></script>
+<script defer src="../js/quiz.js?v=14"></script>
+<script defer src="../js/lectures/ch09.js?v=14"></script>
+</head>
+<body data-page="lecture" data-lecture="ch09">
+<script>
+window.TOPICS = {
+  data: [['s-data-types', 'Grid-structured data and channels'], ['s-conv-op', 'Signals as 1-D grids']],
+  init: [['s-cnn-arch', 'Many small kernels to initialize']],
+  forward: [['s-conv2d', 'Convolution'], ['s-layer', 'conv → ReLU → pool'], ['s-pooling', 'Pooling'], ['s-variants', 'Multi-channel convolution'], ['s-cnn-arch', 'A complete CNN']],
+  loss: [['s-cnn-arch', 'Softmax + cross-entropy on top']],
+  backward: [['s-conv-grad', 'Gradients through convolution']],
+  update: [['s-sharing', 'Shared weights: one gradient summed over positions']],
+  final: [['s-prior', 'Strong prior → better generalization (or underfitting)']]
+};
+</script>
+
+<main class="deck" id="deck">
+
+<section class="slide" id="s-title" data-part="Start here" data-title="Welcome: networks for grid data">
+  <div class="slide-head">
+    <span class="kicker">Lecture 10 · Chapter 9</span>
+    <h1>Convolutional Networks</h1>
+    <p class="lede">A CNN is an ordinary neural network in which some layers use <b>convolution</b> instead of a full matrix multiplication. That one change — small kernels, <b>shared</b> across all positions — makes networks for images, audio and other <b>grid-like</b> data far smaller, faster and better at generalizing.</p>
+  </div>
+  <div class="road">
+    <div class="card big"><span class="kicker">Part 1 · 9.1 – 9.2</span><h4>The operation and why it helps</h4><ol><li>Convolution in 1-D and 2-D</li><li>Convolution as a matrix</li><li>Sparse interactions, parameter sharing, equivariance</li></ol><button class="btn primary go" type="button" data-goto="s-conv-op">Start →</button></div>
+    <div class="card big"><span class="kicker">Part 2 · 9.3 – 9.4</span><h4>Pooling and the prior</h4><ol><li>The three stages of a layer</li><li>Pooling and invariance</li><li>Convolution as an infinitely strong prior</li></ol><button class="btn primary go" type="button" data-goto="s-layer">Jump →</button></div>
+    <div class="card big"><span class="kicker">Part 3 · 9.5 – 9.7</span><h4>In practice</h4><ol><li>Channels, stride, padding</li><li>Local and tiled layers, gradients, biases</li><li>Data types and a complete CNN</li></ol><button class="btn primary go" type="button" data-goto="s-variants">Jump →</button></div>
+  </div>
+</section>
+
+<section class="slide" id="s-loop" data-part="Start here" data-title="Where this lecture fits" data-stages="data,forward,backward">
+  <div class="slide-head"><span class="kicker">Start here</span><h2>Where convolution fits in training</h2><div class="stages"></div></div>
+  <p class="bigidea">The training loop is unchanged. Convolution changes the <b>forward pass</b> (which function the layer computes), so the <b>backward pass</b> changes with it — and the smaller, structured model generalizes better from the same <b>data</b>.</p>
+  <div class="stack"><div data-widget="loop"></div>
+    <div class="row3">
+      <div class="card plain"><h3><span class="dot"></span>Same as before</h3><p>Loss (cross-entropy), back-propagation, SGD/Adam, regularization and batch norm all work as in L4–L9.</p></div>
+      <div class="card plain"><h3><span class="dot"></span>What changes</h3><p>Each layer’s weight matrix is replaced by a small kernel that is slid over the input: few parameters, local connections.</p></div>
+      <div class="card plain"><h3><span class="dot"></span>Next lecture</h3><p>RNNs do the same trick for <b>time</b>: share parameters across time steps instead of across positions.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-conv-op" data-part="Part 1 · Convolution & motivation" data-title="The convolution operation" data-stages="data,forward">
+  <div class="slide-head"><span class="kicker">9.1 · The convolution operation</span><h2>Convolution: a sliding weighted average</h2><div class="stages"></div></div>
+  <p class="bigidea">To smooth noisy readings x(t), average recent ones with weights w(a) that depend on their age a. Doing that at every time t gives a new function s = <b>x ∗ w</b>, the <b>convolution</b> of the input with the kernel.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ s(t)=\int x(a)\,w(t-a)\,da \]<span class="eqno">(9.1)</span>
+        \[ s(t)=(x*w)(t) \]<span class="eqno">(9.2)</span>
+        \[ s(t)=(x*w)(t)=\sum_{a=-\infty}^{\infty}x(a)\,w(t-a) \]<span class="eqno">(9.3) discrete time</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Example: a laser sensor gives the spaceship’s position x(t), but noisily. More recent readings are more relevant, so give them more weight.</li>
+          <li>For a true weighted average, w must be a valid probability density; and w(a) = 0 for negative ages, otherwise it “looks into the future”. These limits are specific to this example — in general, convolution is defined for any functions where the sum/integral exists.</li>
+          <li>In ML the input is a <b>multidimensional array</b> of data and the kernel a multidimensional array of <b>learned parameters</b> (both are called <b>tensors</b>). Outside the stored elements we treat them as 0, so the infinite sum is a finite one.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Input x</dt><dd>The first argument (here the sensor readings).</dd>
+        <dt>Kernel w</dt><dd>The second argument: the weights (learned in a CNN).</dd>
+        <dt>Feature map s</dt><dd>The output of a convolution.</dd>
+        <dt>Tensor</dt><dd>A multidimensional array (vector = 1-D, matrix = 2-D, …).</dd>
+        <dt>∗</dt><dd>The convolution operator.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Kernel w = (0.5, 0.3, 0.2) for ages 0, 1, 2. Readings x(8) = 4, x(9) = 6, x(10) = 5.</li>
+        <li>\(s(10)=x(10)w(0)+x(9)w(1)+x(8)w(2)=5(0.5)+6(0.3)+4(0.2)\)</li>
+        <li>\(=2.5+1.8+0.8=5.1\). The weights add up to 1, so this is a weighted average.</li>
+      </ol></div>
+    </div>
+    <div data-widget="conv1dSmooth"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch06-1.html#/s-ffn">Feedforward layers (L4)</a>: convolution replaces the layer’s matrix multiplication.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch10.html#/s-unfold">RNNs (L11)</a>: another way to process sequences with shared parameters.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-conv2d" data-part="Part 1 · Convolution & motivation" data-title="2-D convolution & cross-correlation" data-stages="forward">
+  <div class="slide-head"><span class="kicker">9.1 · Convolution over two axes</span><h2>2-D convolution and cross-correlation</h2><div class="stages"></div></div>
+  <p class="bigidea">For an image I and a 2-D kernel K, each output pixel is the sum of an image patch multiplied element-wise by the kernel. True convolution <b>flips</b> the kernel; most libraries skip the flip (<b>cross-correlation</b>) but still call it convolution.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ S(i,j)=(I*K)(i,j)=\sum_m\sum_n I(m,n)\,K(i-m,j-n) \]<span class="eqno">(9.4)</span>
+        \[ S(i,j)=(K*I)(i,j)=\sum_m\sum_n I(i-m,j-n)\,K(m,n) \]<span class="eqno">(9.5) commutative</span>
+        \[ S(i,j)=(K*I)(i,j)=\sum_m\sum_n I(i+m,j+n)\,K(m,n) \]<span class="eqno">(9.6) cross-correlation</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Convolution is <b>commutative</b> (9.4 = 9.5) <i>because</i> of the flip — handy for proofs. 9.5 is easier to implement (fewer valid values of m and n).</li>
+          <li>Neural networks learn the kernel anyway, so whether it is flipped doesn’t matter: a learned flipped kernel is just another kernel. Libraries implement cross-correlation (9.6).</li>
+          <li>Each output pixel only looks at a small neighbourhood → it detects a local pattern (edges, spots, textures) wherever it appears.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>I(i, j)</dt><dd>Image brightness at row i, column j.</dd>
+        <dt>K(m, n)</dt><dd>Kernel (filter) weight at offset (m, n).</dd>
+        <dt>Kernel flip</dt><dd>Rotating the kernel by 180° (reversing rows and columns).</dd>
+        <dt>Cross-correlation</dt><dd>Convolution without the flip: slide K as it is.</dd>
+        <dt>Commutative</dt><dd>Order doesn’t matter: I ∗ K = K ∗ I.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Patch \(\begin{bmatrix}0&amp;2&amp;2\\0&amp;2&amp;2\\0&amp;2&amp;2\end{bmatrix}\), vertical-edge kernel \(\begin{bmatrix}1&amp;0&amp;-1\\1&amp;0&amp;-1\\1&amp;0&amp;-1\end{bmatrix}\).</li>
+        <li>Row by row: (0·1 + 2·0 + 2·(−1)) × 3 rows = (−2) × 3 = −6: a strong edge (dark → bright).</li>
+        <li>A flat patch (all 2s) gives 2 + 0 − 2 = 0 per row → 0: no edge.</li>
+      </ol></div>
+    </div>
+    <div data-widget="conv2dExplorer"></div>
+  </div>
+</section>
+
+<section class="slide" id="s-conv-matrix" data-part="Part 1 · Convolution & motivation" data-title="Convolution as a matrix" data-stages="forward">
+  <div class="slide-head"><span class="kicker">9.1 · Convolution as matrix multiplication</span><h2>Convolution is a constrained, sparse matrix</h2><div class="stages"></div></div>
+  <p class="bigidea">Discrete convolution <b>is</b> a matrix multiplication — but by a matrix whose entries are tied together (each row = the row above shifted) and that is <b>mostly zeros</b>. So any neural-network algorithm built on matrix multiplication works for convolution too.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mathbf y=\mathbf M\mathbf x,\qquad \mathbf M=\begin{bmatrix}a&amp;b&amp;c&amp;0&amp;0\\0&amp;a&amp;b&amp;c&amp;0\\0&amp;0&amp;a&amp;b&amp;c\end{bmatrix}\ \ (\text{Toeplitz}) \]</div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>1-D: each row of M equals the row above shifted by one element — a <b>Toeplitz matrix</b>.</li>
+          <li>2-D: the matrix is a <b>doubly block circulant</b> matrix (blocks of Toeplitz-like rows inside a block pattern).</li>
+          <li>Two constraints: many entries must <b>equal</b> other entries (sharing), and most entries are <b>zero</b> (the kernel is much smaller than the image).</li>
+          <li>Algorithms that only need “multiply by the matrix” (and its transpose, for back-prop) work without changes.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Toeplitz matrix</dt><dd>Constant along every diagonal.</dd>
+        <dt>Doubly block circulant</dt><dd>The 2-D version: a block matrix whose blocks repeat in shifted order.</dd>
+        <dt>Sparse matrix</dt><dd>A matrix that is mostly zeros.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Kernel (a, b, c) = (1, 2, −1), x = (2, 1, 0, 3, 1).</li>
+        <li>Row 1: 1·2 + 2·1 + (−1)·0 = 4. Row 2: 1·1 + 2·0 + (−1)·3 = −2. Row 3: 1·0 + 2·3 + (−1)·1 = 5.</li>
+        <li>Matrix 3×5 = 15 entries, 9 non-zero, only 3 distinct numbers.</li>
+      </ol></div>
+    </div>
+    <div data-widget="convMatrix"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch06-5.html#/s-mlp-backprop">Back-prop for matrix layers (L5)</a>: the gradient uses Mᵀ — see <a href="#/s-conv-grad">gradients</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-sparse" data-part="Part 1 · Convolution & motivation" data-title="Sparse interactions" data-stages="forward">
+  <div class="slide-head"><span class="kicker">9.2 · Motivation 1: sparse interactions</span><h2>Sparse interactions: each output looks at a few inputs</h2><div class="stages"></div></div>
+  <p class="bigidea">Make the kernel <b>smaller than the input</b>: each output connects to only k inputs. Fewer parameters, less memory, fewer operations, better <b>statistical efficiency</b> — and depth still lets deep units see a large part of the input.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \text{dense: } m\times n\ \text{parameters},\ O(m\times n)\ \text{runtime} \]
+        \[ \text{sparse: } k\times n\ \text{parameters},\ O(k\times n)\ \text{runtime} \]
+        \[ \text{receptive field after } L \text{ layers (stride 1): } 1+L(k-1) \]</div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Traditional layers: every output interacts with every input. An image may have millions of pixels, but edges can be detected by kernels of tens or hundreds of pixels.</li>
+          <li>With m inputs and n outputs, limiting each output to k connections: k×n instead of m×n. Good performance is possible with k several orders of magnitude smaller than m.</li>
+          <li>Units in deeper layers <b>indirectly</b> interact with a larger portion of the input, so complex interactions are built from simple local pieces.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Sparse connectivity</dt><dd>Also “sparse weights”: each unit is connected to only a few units of the layer below.</dd>
+        <dt>Receptive field</dt><dd>The set of input units that can affect a given unit.</dd>
+        <dt>Statistical efficiency</dt><dd>Doing well from fewer training examples.</dd>
+        <dt>m, n, k</dt><dd>Number of inputs, outputs, connections per output.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>m = n = 10 000, k = 9: dense 10⁸ weights; sparse 9×10⁴ = 90 000 → about 1 100× fewer.</li>
+        <li>Receptive field with k = 3: layer 1 sees 3 inputs, layer 2 sees 1 + 2·2 = 5, layer 3 sees 7.</li>
+      </ol></div>
+    </div>
+    <div data-widget="receptiveField"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch06-1.html#/s-arch">Depth vs. width (L4)</a> and <a href="ch05-4.html#/s-curse">curse of dimensionality (L2)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-sharing" data-part="Part 1 · Convolution & motivation" data-title="Parameter sharing" data-stages="forward,update">
+  <div class="slide-head"><span class="kicker">9.2 · Motivation 2: parameter sharing</span><h2>Parameter sharing: learn one detector, use it everywhere</h2><div class="stages"></div></div>
+  <p class="bigidea">In a dense layer every weight is used <b>once</b>. In a convolution every kernel weight is used at <b>every position</b>. Runtime stays O(k×n), but storage drops to just <b>k</b> parameters.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ S(i,j)=I(i,j)-I(i,j-1)\qquad(\text{kernel }(-1,\ 1)) \]</div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Instead of a separate set of parameters for every location, we learn <b>one</b> set (except perhaps at the borders).</li>
+          <li>Because k is tiny compared with m and n (which are usually similar), k parameters are practically nothing next to m×n.</li>
+          <li>Book example (Figure 9.6): a 320×280 image, kernel of 2 weights, output 319×280. Convolution needs 319·280·3 = 267 960 floating-point operations; the same map as a dense matrix needs over 8 billion entries — convolution is ~4 billion times more efficient to store and ~60 000 times more efficient to compute.</li>
+          <li>During training, the gradient of a shared weight is the <b>sum</b> of its gradients at all positions.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Parameter sharing</dt><dd>Using the same parameter for more than one function in a model (“tied weights”).</dd>
+        <dt>Edge</dt><dd>A place where brightness changes sharply.</dd>
+        <dt>Flop</dt><dd>One floating-point operation (a multiply or an add).</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Outputs: 319 × 280 = 89 320. Each needs 2 multiplies + 1 add = 3 flops → 267 960 flops.</li>
+        <li>Dense: inputs 320 × 280 = 89 600; matrix 89 600 × 89 320 ≈ 8.0 × 10⁹ entries, ≈ 1.6 × 10¹⁰ flops.</li>
+        <li>Ratio of compute: 1.6 × 10¹⁰ / 267 960 ≈ 60 000. Storage: 8 × 10⁹ / 2 = 4 × 10⁹.</li>
+      </ol></div>
+    </div>
+    <div data-widget="edgeEfficiency"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch07.html#/s-reg-what">Regularization (L6)</a>: sharing is a hard constraint that reduces capacity.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch10.html#/s-unfold">Parameter sharing across time in RNNs (L11)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-equivariance" data-part="Part 1 · Convolution & motivation" data-title="Equivariance to translation" data-stages="forward">
+  <div class="slide-head"><span class="kicker">9.2 · Motivation 3: equivariant representations</span><h2>Equivariance: move the input, the output moves too</h2><div class="stages"></div></div>
+  <p class="bigidea">Because the same kernel is used everywhere, convolution is <b>equivariant to translation</b>: shifting the input and then convolving gives the same result as convolving and then shifting.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ f\text{ is equivariant to }g\iff f\big(g(x)\big)=g\big(f(x)\big) \]
+        \[ I'=g(I),\quad I'(x,y)=I(x-1,y)\ \ \Rightarrow\ \ g(I)*K=g(I*K) \]</div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Time series: convolution produces a timeline of <b>when</b> features appear; move an event later and the same representation appears later.</li>
+          <li>Images: a 2-D map of <b>where</b> features appear; move the object and its representation moves the same amount.</li>
+          <li>Useful when the same local function (e.g. an edge detector) is useful everywhere — edges appear all over the image.</li>
+          <li>Not always wanted: for face-centred crops, the top should look for eyebrows and the bottom for a chin (→ locally connected layers).</li>
+          <li>Convolution is <b>not</b> naturally equivariant to <b>scale</b> or <b>rotation</b>.</li>
+          <li>Bonus: convolution can process inputs of different sizes, which a fixed-shape matrix cannot.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Equivariant</dt><dd>The output changes in the same way as the input.</dd>
+        <dt>Invariant</dt><dd>The output does not change at all (pooling, next part).</dd>
+        <dt>Translation</dt><dd>Shifting without rotating or resizing.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>x = (0, 0, 1, 2, 0, 0), kernel (1, −1): output \(x_{t}-x_{t+1}\) = (0, −1, −1, 2, 0).</li>
+        <li>Shift x right by 1: (0, 0, 0, 1, 2, 0) → output (0, 0, −1, −1, 2): the same numbers, one step later.</li>
+      </ol></div>
+    </div>
+    <div data-widget="equivariance"></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-layer" data-part="Part 2 · Pooling & the prior" data-title="The three stages of a conv layer" data-stages="forward">
+  <div class="slide-head"><span class="kicker">9.3 · Pooling</span><h2>A convolutional layer: convolution → detector → pooling</h2><div class="stages"></div></div>
+  <p class="bigidea">A typical layer has <b>three stages</b>: several convolutions in parallel give linear activations; a nonlinearity (usually ReLU) is the <b>detector stage</b>; then <b>pooling</b> summarizes nearby outputs.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ z_{i,j}=(I\star K)_{i,j}+b,\qquad h_{i,j}=\max(0,z_{i,j}) \]
+        \[ p_{u,v}=\max_{(i,j)\in\text{window}(u,v)}h_{i,j} \]</div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ol class="steps">
+          <li><b>Convolution stage</b>: affine transform (kernel + bias) → linear activations.</li>
+          <li><b>Detector stage</b>: ReLU (or another nonlinearity) keeps only where the feature is present.</li>
+          <li><b>Pooling stage</b>: replaces each location by a summary statistic of its neighbourhood (max, average, L² norm, distance-weighted average).</li>
+        </ol>
+        <p>Two terminologies: a “complex layer” with three stages, or three “simple layers” (conv layer, detector layer, pooling layer).</p>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Linear activation</dt><dd>Output of the convolution + bias, before the nonlinearity.</dd>
+        <dt>Detector stage</dt><dd>The nonlinearity applied to each linear activation.</dd>
+        <dt>Pooling</dt><dd>Summarize a neighbourhood by one number.</dd>
+        <dt>Max pooling</dt><dd>Report the maximum in a rectangular neighbourhood.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Conv outputs in a 2×2 window: (−6, 2, 0, 4); bias b = −1 → (−7, 1, −1, 3).</li>
+        <li>ReLU: (0, 1, 0, 3).</li>
+        <li>Max pool: max(0, 1, 0, 3) = 3. Average pool would give 4/4 = 1.</li>
+      </ol></div>
+    </div>
+    <div data-widget="layerPipeline"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch06-1.html#/s-hidden">ReLU hidden units (L4)</a>; max pooling relates to <a href="ch06-1.html#/s-other-hidden">maxout units (L4)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-pooling" data-part="Part 2 · Pooling & the prior" data-title="Pooling: invariance & downsampling" data-stages="forward">
+  <div class="slide-head"><span class="kicker">9.3 · Pooling</span><h2>Pooling: invariance to small shifts, and fewer units</h2><div class="stages"></div></div>
+  <p class="bigidea">Pooling makes the representation <b>approximately invariant to small translations</b> — useful when we care <b>whether</b> a feature is present more than exactly <b>where</b>. Pooling with a stride also <b>downsamples</b>, and pooling into a fixed number of regions handles <b>inputs of varying size</b>.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \text{max: }\max_{j\in R}h_j\qquad\text{average: }\frac1{|R|}\sum_{j\in R}h_j\qquad L^2\text{: }\sqrt{\sum_{j\in R}h_j^2} \]
+        \[ \#\text{pooled outputs}=\Big\lfloor\frac{n-\text{width}}{\text{stride}}\Big\rfloor+1 \]</div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>To decide whether an image contains a face, we need an eye on the left and one on the right — not their pixel-perfect location.</li>
+          <li>Shifting by one pixel changes every detector value, but only some max-pooled values (max is sensitive to the largest value, not its position).</li>
+          <li>Pooling regions spaced k pixels apart → about k× fewer inputs to the next layer: faster, and fewer parameters if the next layer is fully connected.</li>
+          <li>Variable-size images: vary the offset between pooling regions so the classifier always gets the same number of summary statistics (e.g. one per quadrant).</li>
+          <li>Pooling regions can also be chosen dynamically (e.g. clustering interesting features) or learned once and applied to all images.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Invariance to translation</dt><dd>Shifting the input slightly leaves most outputs unchanged.</dd>
+        <dt>Stride (of pooling)</dt><dd>Distance between neighbouring pooling windows.</dd>
+        <dt>Downsampling</dt><dd>Keeping fewer values than you started with.</dd>
+        <dt>Summary statistic</dt><dd>One number describing a group (max, mean, norm).</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Detector values (0.1, 1.0, 0.2, 0.1), max pool width 3, stride 1 → (max(0.1,1,0.2), max(1,0.2,0.1)) = (1.0, 1.0).</li>
+        <li>Shift right, new value 0.3 enters: (0.3, 0.1, 1.0, 0.2) → (1.0, 1.0): no pooled value changed although every input did.</li>
+        <li>14 values, width 3, stride 2: ⌊(14 − 3)/2⌋ + 1 = 6 outputs.</li>
+      </ol></div>
+    </div>
+    <div data-widget="poolingShift"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag same">Compare</span><span><a href="ch07.html#/s-augment">Data augmentation with shifts (L6)</a>: invariance learned from data instead of built into the architecture.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="#/s-data-types">Variable-size inputs</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-prior" data-part="Part 2 · Pooling & the prior" data-title="An infinitely strong prior" data-stages="final">
+  <div class="slide-head"><span class="kicker">9.4 · Convolution and pooling as an infinitely strong prior</span><h2>Convolution and pooling as an infinitely strong prior</h2><div class="stages"></div></div>
+  <p class="bigidea">A CNN is a fully connected net with an <b>infinitely strong prior</b>: weights must be zero outside a small local region, and identical (but shifted) between neighbouring units. When this belief is right it greatly improves generalization; when it is wrong it causes <b>underfitting</b>.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ p(\boldsymbol\theta)=0\quad\text{unless both hold:} \]
+        \[ W_{i,j}=0\ \text{outside a small window},\qquad W_{i,j}=W_{i+1,\,j+1}\ \text{(tied)} \]</div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li><b>Weak</b> prior (high entropy, e.g. a wide Gaussian): the data can move parameters freely. <b>Strong</b> prior: low entropy, actively decides where parameters end up. <b>Infinitely strong</b>: some values have zero probability — forbidden no matter what the data say.</li>
+          <li>Convolution’s prior: the layer learns only <b>local</b> interactions and is <b>equivariant to translation</b>. Pooling’s prior: each unit is <b>invariant to small translations</b>.</li>
+          <li>Underfitting risk: if a task needs precise spatial information, pooling everything raises the training error. Some architectures pool only some channels.</li>
+          <li>If a task needs information from very distant locations, the convolution prior may be inappropriate.</li>
+          <li>Fair comparisons: compare convolutional models with other convolutional models; permutation-invariant models must learn the topology from data.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Prior</dt><dd>Belief about good parameter values before seeing data.</dd>
+        <dt>Infinitely strong prior</dt><dd>Gives zero probability to some parameter values: they are completely forbidden.</dd>
+        <dt>Underfitting</dt><dd>Training error stays high because the model cannot represent the solution.</dd>
+        <dt>Permutation invariant</dt><dd>A model that would work just as well if the pixels were shuffled (it ignores topology).</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>16 inputs → 14 outputs: dense layer 16 × 14 = 224 free weights.</li>
+        <li>The prior forces 224 − 14·3 = 182 weights to 0 and ties the remaining 42 into 3 values: 3 free parameters.</li>
+        <li>Fewer free parameters → lower capacity → less overfitting, if the prior matches the task.</li>
+      </ol></div>
+    </div>
+    <div data-widget="priorTest"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch05-4.html#/s-map">Priors and MAP estimation (L2)</a>, <a href="ch05-1.html#/s-capacity">capacity, underfitting and overfitting (L1)</a>.</span></li>
+    <li><span class="tag same">Compare</span><span><a href="ch07.html#/s-l2">L² weight decay (L6)</a>: a soft (finite) Gaussian prior instead of a hard one.</span></li>
+  </ul></div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-variants" data-part="Part 3 · Convolution in practice" data-title="Multi-channel convolution" data-stages="forward">
+  <div class="slide-head"><span class="kicker">9.5 · Variants of the basic convolution function</span><h2>Many kernels, many channels</h2><div class="stages"></div></div>
+  <p class="bigidea">One kernel detects one kind of feature. Real layers apply <b>many kernels in parallel</b> to a <b>multi-channel</b> input (e.g. red, green, blue) — so inputs and outputs are 3-D tensors and the kernel is a <b>4-D</b> tensor.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ Z_{i,j,k}=\sum_{l,m,n}V_{l,\,j+m-1,\,k+n-1}\,K_{i,l,m,n} \]<span class="eqno">(9.7)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>V: input with element \(V_{i,j,k}\) = channel i, row j, column k. Z: output, same format.</li>
+          <li>\(K_{i,l,m,n}\): connection strength between output channel i and input channel l, with an offset of m rows and n columns.</li>
+          <li>The sum runs over all input channels l and all valid offsets m, n. (The −1 is because maths indexes from 1; in Python/C it disappears.)</li>
+          <li>Software works in batch mode: 4-D tensors with a 4th axis for the examples in the minibatch.</li>
+          <li>With multiple channels the linear operations are not guaranteed to be commutative, even with kernel flipping.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Channel</dt><dd>One “layer” of a grid: e.g. the red values of an image, or one feature map.</dd>
+        <dt>Kernel stack</dt><dd>All filters of one output channel (one per input channel).</dd>
+        <dt>4-D kernel tensor</dt><dd>Output channel × input channel × rows × columns.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>RGB input (3 channels), 64 output channels, 3×3 kernels.</li>
+        <li>Weights: 64 × 3 × 3 × 3 = 1 728, plus 64 biases = 1 792 parameters.</li>
+        <li>Each output value: 3 × 3 × 3 = 27 multiply-adds (summing over all input channels).</li>
+      </ol></div>
+    </div>
+    <div data-widget="multiChannel"></div>
+  </div>
+</section>
+
+<section class="slide" id="s-stride" data-part="Part 3 · Convolution in practice" data-title="Stride" data-stages="forward">
+  <div class="slide-head"><span class="kicker">9.5 · Stride</span><h2>Strided convolution: skip positions to save work</h2><div class="stages"></div></div>
+  <p class="bigidea">Move the kernel <b>s</b> positions at a time: fewer outputs and less computation, at the cost of extracting features less finely. It equals a full (stride-1) convolution followed by <b>downsampling</b>.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ Z_{i,j,k}=c(\mathbf K,\mathbf V,s)_{i,j,k}=\sum_{l,m,n}\Big[V_{l,\,(j-1)\times s+m,\,(k-1)\times s+n}\,K_{i,l,m,n}\Big] \]<span class="eqno">(9.8)</span>
+        \[ \text{output width}=\Big\lfloor\frac{m+p_{\text{left}}+p_{\text{right}}-k}{s}\Big\rfloor+1 \]</div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>s is the <b>stride</b>; we can use a different stride for each direction.</li>
+          <li>Computing all outputs and then throwing most away is wasteful — strided convolution computes only the ones we keep.</li>
+          <li>Stride and pooling both shrink feature maps, so later layers are cheaper.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Stride s</dt><dd>Step size of the kernel between neighbouring outputs.</dd>
+        <dt>c(K, V, s)</dt><dd>Name of the strided convolution function.</dd>
+        <dt>⌊·⌋</dt><dd>Round down (floor).</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>m = 9, k = 3, s = 2, no padding: ⌊(9 − 3)/2⌋ + 1 = 4 outputs, at positions 0, 2, 4, 6.</li>
+        <li>Stride 1 would give 7 outputs; keeping every 2nd (0, 2, 4, 6) gives the same 4 numbers.</li>
+        <li>2-D 224×224 image, k = 7, s = 2, padding 3: ⌊(224 + 6 − 7)/2⌋ + 1 = 112.</li>
+      </ol></div>
+    </div>
+    <div data-widget="convArithmetic" data-mode="stride"></div>
+  </div>
+</section>
+
+<section class="slide" id="s-padding" data-part="Part 3 · Convolution in practice" data-title="Zero padding" data-stages="forward">
+  <div class="slide-head"><span class="kicker">9.5 · Zero padding</span><h2>Zero padding: valid, same and full convolution</h2><div class="stages"></div></div>
+  <p class="bigidea">Without padding, each layer shrinks the width by k − 1, so we must choose between <b>small kernels</b> and a <b>quickly shrinking network</b>. Implicit zero padding lets us choose the kernel width and the output size <b>independently</b>.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \text{valid: } m-k+1\qquad\text{same: } m\qquad\text{full: } m+k-1 \]</div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li><b>Valid</b>: no padding; the kernel only visits positions where it fits entirely. All outputs use the same number of inputs (regular behaviour), but the size shrinks every layer — eventually to 1×1, which limits depth.</li>
+          <li><b>Same</b>: just enough zeros to keep output size = input size. Unlimited depth, but border pixels influence fewer outputs → <b>under-represented</b>.</li>
+          <li><b>Full</b>: enough zeros that every pixel is visited k times in each direction; output m + k − 1. Border outputs depend on fewer real pixels, making one kernel hard to fit at all positions.</li>
+          <li>The best amount (by test accuracy) usually lies between valid and same.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Zero padding</dt><dd>Adding zeros around the input so the kernel can be centred on the border.</dd>
+        <dt>Valid / same / full</dt><dd>MATLAB’s names for no / size-preserving / maximal padding.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>m = 7, k = 3: valid 5, same 7 (1 zero each side), full 9 (2 zeros each side).</li>
+        <li>32-pixel input, k = 5, valid: 28, 24, 20, … → after 7 layers 4, the 8th layer gives width 0: at most 7 layers.</li>
+        <li>Same padding with k = 5: 2 zeros each side; the corner pixel is used by only 3 of the 5 kernel positions per direction.</li>
+      </ol></div>
+    </div>
+    <div data-widget="convArithmetic" data-mode="padding"></div>
+  </div>
+</section>
+
+<section class="slide" id="s-local" data-part="Part 3 · Convolution in practice" data-title="Locally connected & tiled layers" data-stages="forward">
+  <div class="slide-head"><span class="kicker">9.5 · Locally connected layers, tiled convolution</span><h2>Between “fully connected” and “convolution”</h2><div class="stages"></div></div>
+  <p class="bigidea">Keep the <b>local connections</b> but drop the sharing → a <b>locally connected</b> (unshared) layer. Share partly, cycling through t kernels → <b>tiled convolution</b>. Or restrict which channels connect → fewer parameters without fewer units.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ Z_{i,j,k}=\sum_{l,m,n}\big[V_{l,\,j+m-1,\,k+n-1}\,w_{i,j,k,l,m,n}\big] \]<span class="eqno">(9.9) locally connected</span>
+        \[ Z_{i,j,k}=\sum_{l,m,n}V_{l,\,j+m-1,\,k+n-1}\,K_{i,l,m,n,\,j\%t+1,\,k\%t+1} \]<span class="eqno">(9.10) tiled</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li><b>Locally connected</b>: a 6-D weight tensor W — output channel i, output row j, output column k, input channel l, row offset m, column offset n. Same connectivity graph as convolution, but every connection has its own weight.</li>
+          <li>Use it when each feature should depend on a small part of space, but there is no reason the same feature appears everywhere (look for a mouth only in the bottom half of a face).</li>
+          <li><b>Tiled</b>: learn a set of t kernels and rotate through them as you move. Neighbours get different filters, but memory grows only by a factor t. t = output width ⇒ locally connected; t = 1 ⇒ convolution.</li>
+          <li><b>Channel groups</b>: the first group of output channels connects only to the first group of input channels, and so on — fewer parameters, less memory and computation, same number of hidden units.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Unshared convolution</dt><dd>Another name for a locally connected layer.</dd>
+        <dt>%</dt><dd>Modulo: remainder after division (t % t = 0, (t + 1) % t = 1).</dd>
+        <dt>t</dt><dd>Number of kernels the tiled layer cycles through.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>8 inputs, 6 outputs, k = 3 (1 channel).</li>
+        <li>Fully connected: 8 × 6 = 48. Locally connected: 6 × 3 = 18. Tiled (t = 2): 2 × 3 = 6. Convolution: 3.</li>
+        <li>Output j uses kernel number j % t: j = 0, 1, 2, 3 → kernels 0, 1, 0, 1.</li>
+      </ol></div>
+    </div>
+    <div data-widget="connectivityCompare"></div>
+  </div>
+</section>
+
+<section class="slide" id="s-conv-grad" data-part="Part 3 · Convolution in practice" data-title="Gradients & biases" data-stages="backward,update">
+  <div class="slide-head"><span class="kicker">9.5 · Gradients and biases</span><h2>Back-propagation through a convolution</h2><div class="stages"></div></div>
+  <p class="bigidea">Convolution is multiplication by a sparse matrix M, so back-propagation multiplies the incoming gradient by <b>Mᵀ</b> (a “transposed convolution”). The kernel gradient <b>sums</b> over every position where the kernel was used.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ G_{i,j,k}=\frac{\partial}{\partial Z_{i,j,k}}J(\mathbf V,\mathbf K) \]
+        \[ g(\mathbf G,\mathbf V,s)_{i,j,k,l}=\frac{\partial J}{\partial K_{i,j,k,l}}=\sum_{m,n}G_{i,m,n}\,V_{j,\,(m-1)\times s+k,\,(n-1)\times s+l} \]<span class="eqno">(9.11)</span>
+        \[ h(\mathbf K,\mathbf G,s)_{i,j,k}=\frac{\partial J}{\partial V_{i,j,k}}=\sum_{\substack{l,m\\(l-1)s+m=j}}\ \sum_{\substack{n,p\\(n-1)s+p=k}}\ \sum_q K_{q,i,m,p}\,G_{q,l,n} \]<span class="eqno">(9.12–9.13)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Training needs ∂J/∂K (to update the kernel) and, unless this is the first layer, ∂J/∂V (to pass the error further down).</li>
+          <li>For stride &gt; 1 these are not ordinary convolutions — they need their own implementations (g and h above).</li>
+          <li>The transpose must be coordinated with the forward pass: its output size depends on padding and stride, and several input sizes can give the same output size, so the original size must be given explicitly.</li>
+          <li><b>Biases</b>: locally connected layers — one per unit; tiled — shared with the same tiling as the kernels; convolution — usually <b>one per output channel</b>, shared over all positions. A separate bias per location (for fixed-size inputs) can correct for, e.g., border units that receive less input because of zero padding.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>G</dt><dd>Gradient of the loss with respect to the layer’s output Z (arrives from above).</dd>
+        <dt>g(G, V, s)</dt><dd>Function giving the kernel gradient.</dd>
+        <dt>h(K, G, s)</dt><dd>Function giving the input gradient (transposed convolution).</dd>
+        <dt>Transposed convolution</dt><dd>Multiplication by Mᵀ; also used to upsample.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>x = (1, 2, 0, 1), k = (1, −1), stride 1: z = (1−2, 2−0, 0−1) = (−1, 2, −1).</li>
+        <li>Upstream G = (1, 0, 2). Kernel: ∂J/∂k₀ = 1·1 + 0·2 + 2·0 = 1; ∂J/∂k₁ = 1·2 + 0·0 + 2·1 = 4.</li>
+        <li>Input: ∂J/∂x₁ is used by z₀ (weight −1) and z₁ (weight 1): 1·(−1) + 0·1 = −1.</li>
+        <li>Shared bias: ∂J/∂b = 1 + 0 + 2 = 3.</li>
+      </ol></div>
+    </div>
+    <div data-widget="convGrad"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch06-5.html#/s-chain">Chain rule (L5)</a> and <a href="ch06-5.html#/s-general">general back-prop (L5)</a>.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch08-3.html#/s-adam">Adam (L8)</a> updates the kernel with these gradients; <a href="ch10.html#/s-bptt">BPTT (L11)</a> also sums gradients of shared weights.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-data-types" data-part="Part 3 · Convolution in practice" data-title="Data types & variable-size inputs" data-stages="data">
+  <div class="slide-head"><span class="kicker">9.7 · Data types</span><h2>What data suits a CNN?</h2><div class="stages"></div></div>
+  <p class="bigidea">Grid data: several <b>channels</b> observed at points in space or time. A CNN can also take inputs of <b>different sizes</b> — something a fixed-size weight matrix simply cannot — as long as the size varies because there is <b>more of the same kind</b> of observation.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card" style="padding:0;overflow:hidden"><div class="scroll-x"><table class="data-table">
+        <thead><tr><th></th><th>Single channel</th><th>Multichannel</th></tr></thead>
+        <tbody>
+          <tr><td>1-D</td><td>Audio waveform (amplitude over time)</td><td>Skeleton animation (joint angles over time)</td></tr>
+          <tr><td>2-D</td><td>Fourier-transformed audio (frequency × time)</td><td>Colour image (R, G, B over x, y)</td></tr>
+          <tr><td>3-D</td><td>Volumetric data, e.g. CT scans</td><td>Colour video (channels over time, x, y)</td></tr>
+        </tbody>
+      </table></div></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Images of different widths and heights: the kernel is simply applied a different number of times, and the output scales accordingly (a different-size doubly block circulant matrix, same kernel).</li>
+          <li>Need a fixed-size output (e.g. class scores)? Add a pooling layer whose regions scale with the input size.</li>
+          <li>Doesn’t make sense: inputs whose size varies because they <b>optionally include different kinds</b> of observations (college applications with or without a test score) — convolving the same weights over grades and test scores is meaningless.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Channel</dt><dd>The observation of one quantity at each point in space/time.</dd>
+        <dt>Volumetric data</dt><dd>A 3-D grid of measurements (e.g. a CT scan).</dd>
+        <dt>Fourier transform</dt><dd>Re-expresses a signal by its frequencies.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Lengths 11 and 20, kernel 3: feature maps of 9 and 18.</li>
+        <li>Pooling into quarters: regions of ~2 and ~4–5 values → always 4 numbers.</li>
+        <li>So a classifier with 4 × C inputs works for both lengths.</li>
+      </ol></div>
+    </div>
+    <div data-widget="variableInput"></div>
+  </div>
+</section>
+
+<section class="slide" id="s-cnn-arch" data-part="Part 3 · Convolution in practice" data-title="Putting it together: a complete CNN" data-stages="init,forward,loss,backward,update">
+  <div class="slide-head"><span class="kicker">Putting it together</span><h2>A complete CNN and its training loop</h2><div class="stages"></div></div>
+  <p class="bigidea">Stack <b>conv → ReLU → pool</b> blocks, then a fully connected softmax layer. Everything else from the course trains it: cross-entropy loss, back-propagation (with transposed convolutions), SGD/Adam, careful initialization, augmentation, dropout and batch norm.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \text{params(conv)}=k\cdot k\cdot C_{\text{in}}\cdot C_{\text{out}}+C_{\text{out}} \]
+        \[ \text{cost}=H_{\text{out}}W_{\text{out}}\cdot k\cdot k\cdot C_{\text{in}}\cdot C_{\text{out}} \]</div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Convolutional networks were some of the first deep networks to work with back-propagation — possibly just because they were computationally efficient, so it was easier to experiment and tune them.</li>
+          <li>They specialize neural nets for clear <b>grid-structured</b> topology and scale to very large models; most successful on 2-D images.</li>
+          <li>Early layers: small receptive fields, simple features (edges). Later layers: large receptive fields, complex features (parts, objects).</li>
+          <li>For 1-D <b>sequences</b>, the next specialization is the recurrent neural network.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Flatten</dt><dd>Turn the final H×W×C tensor into one long vector.</dd>
+        <dt>Multiply-add</dt><dd>One multiplication followed by one addition (the basic cost unit).</dd>
+        <dt>Jump</dt><dd>Distance in input pixels between neighbouring units of a layer (doubles after each 2× pooling).</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Conv 1: 5×5, 3 → 16 channels: 5·5·3·16 + 16 = 1 216 parameters; same padding keeps 32×32.</li>
+        <li>Pool → 16×16×16. Conv 2: 5·5·16·32 + 32 = 12 832. Pool → 8×8×32 = 2 048 values.</li>
+        <li>FC to 10 classes: 2 048·10 + 10 = 20 490. Total ≈ 34 538 parameters.</li>
+        <li>Receptive field: 5 → pool 6 → conv 6 + 4·2 = 14 → pool 16.</li>
+      </ol></div>
+    </div>
+    <div data-widget="cnnBuilder"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch06-1.html#/s-softmax">Softmax output (L4)</a>, <a href="ch08-3.html#/s-init-scale">initialization scale (L8)</a>, <a href="ch07.html#/s-dropout">dropout (L6)</a>, <a href="ch08-6.html#/s-bn-how">batch normalization (L9)</a>.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch10.html#/s-seq">Sequence modelling with RNNs (L11)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-summary" data-part="Wrap-up" data-title="Summary: how it all connects" data-stages="data,forward,backward">
+  <div class="slide-head"><span class="kicker">Wrap-up</span><h2>Summary: how it all connects</h2><div class="stages"></div></div>
+  <p class="bigidea">Convolution = <b>sparse</b> + <b>shared</b> weights → <b>equivariance</b>; pooling adds <b>invariance</b> and downsampling. Together they are a strong prior that makes networks for grid data small, fast and data-efficient — or underfit when the prior is wrong.</p>
+  <div class="card" style="padding:0;overflow:hidden"><div class="scroll-x"><table class="data-table">
+    <thead><tr><th>Idea</th><th>Formula / rule</th><th>Why it matters</th></tr></thead>
+    <tbody>
+      <tr><td>Convolution</td><td>\(S(i,j)=\sum_m\sum_nI(i+m,j+n)K(m,n)\)</td><td>local pattern detector applied everywhere</td></tr>
+      <tr><td>Sparse interactions</td><td>k×n instead of m×n connections</td><td>less memory and compute</td></tr>
+      <tr><td>Parameter sharing</td><td>k parameters instead of m×n</td><td>statistical efficiency</td></tr>
+      <tr><td>Equivariance</td><td>\(f(g(x))=g(f(x))\) for shifts</td><td>features move with the object</td></tr>
+      <tr><td>Pooling</td><td>max / average / L² over a window</td><td>invariance, downsampling, variable sizes</td></tr>
+      <tr><td>Strong prior</td><td>zeros + tied weights</td><td>generalizes better — or underfits</td></tr>
+      <tr><td>Stride, padding</td><td>\(\lfloor(m+p-k)/s\rfloor+1\)</td><td>control output size and cost</td></tr>
+      <tr><td>Local / tiled</td><td>t = 1 … output width kernels</td><td>location-specific features</td></tr>
+      <tr><td>Gradients</td><td>∂J/∂x = Mᵀ G, ∂J/∂K sums over positions</td><td>trained with ordinary back-prop</td></tr>
+    </tbody>
+  </table></div></div>
+  <div class="row3" style="margin-top:16px">
+    <div class="card plain"><h3><span class="dot"></span>Remember</h3><p>A CNN is just an MLP with a very particular (sparse, tied) weight matrix — everything else in the training loop stays the same.</p></div>
+    <div class="card plain"><h3><span class="dot"></span>Next lecture</h3><p><a href="ch10.html">Recurrent networks</a>: sharing parameters across <b>time</b>.</p></div>
+    <div class="card fit"><h3><span class="dot"></span>Check yourself</h3><p>Twelve quiz questions with explanations.</p><button class="btn primary" type="button" data-goto="s-quiz" style="margin-top:6px">Take the quiz →</button></div>
+  </div>
+</section>
+
+<section class="slide" id="s-quiz" data-part="Wrap-up" data-title="Check yourself (quiz)">
+  <div class="slide-head"><span class="kicker">Wrap-up</span><h2>Check yourself</h2><p class="lede">Pick an answer to see whether it is right and why.</p></div>
+  <div data-widget="quiz"></div>
+  <footer class="credits">Study notes for Deep Learning, chapter 9. Equation numbers follow Goodfellow, Bengio &amp; Courville, <em>Deep Learning</em> (MIT Press, 2016). Explanations, diagrams and demos are original.</footer>
+</section>
+
+</main>
+</body>
+</html>
