@@ -337,7 +337,9 @@ canvas.clickable { cursor: crosshair; }
 .readout td { padding: 5px 6px; border-bottom: 1px solid var(--grid); vertical-align: top; }
 .readout td.num { font-family: var(--mono); font-size: .76rem; white-space: nowrap; }
 .readout .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; background: var(--c); margin-right: 6px; vertical-align: -1px; }
-.scroll-x { overflow-x: auto; max-width: 100%; }
+.scroll-x { overflow-x: auto; max-width: 100%; position: relative; }
+/* KaTeX's hidden MathML copy is absolutely positioned: keep it inside the scrolling box */
+.math, .card, .calc > li { position: relative; }
 
 .callout {
   display: flex; gap: 10px; align-items: flex-start;
@@ -637,7 +639,8 @@ a.toc-item { text-decoration: none; }
 .gwrap { min-width: 0; }
 .gcap { font-size: .74rem; color: var(--text-2); margin-bottom: 4px; font-weight: 600; }
 .gop { align-self: center; font-size: 1.15rem; color: var(--muted); padding-top: 16px; }
-.cgrid { display: inline-grid; gap: 2px; font-family: var(--mono); font-size: .68rem; max-width: 100%; }
+.cgrid { display: inline-grid; gap: 2px; font-family: var(--mono); font-size: .68rem; max-width: 100%; overflow-x: auto; padding-bottom: 2px; }
+.unitrow > .cgrid { min-width: 0; }
 .cgrid .cell {
   width: var(--cs, 26px); height: var(--cs, 26px); display: flex; align-items: center; justify-content: center;
   border-radius: 4px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text);

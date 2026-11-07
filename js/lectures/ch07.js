@@ -140,10 +140,10 @@ Widgets.l1vsl2 = (el) => {
     ]);
     lgd.set([{ label: 'L2 (scales everything a little)', color: c.s1 }, { label: 'L1 (dead zone |w*| ≤ α/H → exactly 0)', color: c.s2 }, { label: 'no penalty', color: c.muted, kind: 'dash' }]);
     bars.innerHTML = '';
-    const grid = h('div', { style: 'display:grid;grid-template-columns:90px repeat(8,1fr);gap:4px;align-items:center;font-size:.72rem' });
+    const grid = h('div', { style: 'display:grid;grid-template-columns:72px repeat(8,minmax(30px,1fr));gap:4px;align-items:center;font-size:.72rem' });
     const row = (lab, arr, col) => { grid.append(h('div', {}, lab)); arr.forEach(v => grid.append(h('div', { style: `height:26px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);background:${v === 0 ? 'var(--surface-2)' : alpha(col, Math.min(1, 0.2 + Math.abs(v) / 3))};${v === 0 ? 'outline:2px dashed var(--critical)' : ''}` }, v === 0 ? '0' : v.toFixed(2)))); };
     row('w*', ws, c.text2); row('after L2', ws.map(L2), c.s1); row('after L1', ws.map(L1), c.s2);
-    bars.append(grid);
+    bars.append(h('div', { class: 'scroll-x' }, grid));
     const zeros = ws.map(L1).filter(v => v === 0).length;
     calc.innerHTML = `<span class="c">L1 solution (7.23):  wᵢ = sign(wᵢ*)·max{|wᵢ*| − α/Hᵢᵢ, 0}      L2: wᵢ = Hᵢᵢ/(Hᵢᵢ + α)·wᵢ*</span>
 example w* = 1.2:  L1 → sign(1.2)·max{1.2 − ${a.toFixed(2)}, 0} = <b>${L1(1.2).toFixed(3)}</b>     L2 → 1.2/(1 + ${a.toFixed(2)}) = <b>${L2(1.2).toFixed(3)}</b>
