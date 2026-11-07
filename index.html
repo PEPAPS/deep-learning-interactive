@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deep Learning Course Notes</title>
+<meta name="description" content="Interactive study notes for a Deep Learning course: 11 lectures from machine-learning basics to CNNs and RNNs, with every term, formula and calculation explained, live demos, and a map of how everything connects in the training loop.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232a78d6'/%3E%3Cpath d='M6 9c5 0 6 14 10 14s5-14 10-14' fill='none' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<link rel="stylesheet" href="css/style.css?v=14">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script defer src="js/core.js?v=14"></script>
+<script defer src="js/course.js?v=14"></script>
+<script defer src="js/concepts.js?v=14"></script>
+</head>
+<body data-page="hub">
+<main class="hub">
+
+  <section class="hero">
+    <span class="kicker">Deep Learning · interactive course notes</span>
+    <h1>Deep learning, explained and connected</h1>
+    <p class="lede">Eleven lectures — from “what is learning?” to convolutional and recurrent networks — rebuilt as interactive slides. Every slide explains its <b>terms</b>, works through its <b>formulas with real numbers</b>, lets you <b>play with a live demo</b>, and shows <b>how it connects</b> to the rest of the course and to the training loop.</p>
+    <div class="hero-stats">
+      <span class="pill">11 lectures</span><span class="pill">191 slides</span><span class="pill">130+ live demos</span><span class="pill">a quiz for every lecture</span><span class="pill">light &amp; dark mode</span>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:18px">
+      <a class="btn primary" href="lectures/ch05-1.html">Start with Lecture 1 →</a>
+      <a class="btn" href="#loop">See the training loop</a>
+      <a class="btn" href="#concepts">Explore the concepts</a>
+    </div>
+  </section>
+
+  <section>
+    <h2>How to read these notes</h2>
+    <span class="note">Each lecture is a slide deck. Use ← → (or the buttons at the bottom), the slide list on the left, or switch to “One page” to scroll.</span>
+    <div class="row3">
+      <div class="card plain"><h3><span class="dot"></span>Key idea → plain words</h3><p>Every slide starts with the one-sentence key idea, then explains it in everyday language before the maths.</p></div>
+      <div class="card terms"><h3><span class="dot"></span>Terms &amp; calculations</h3><p>A “Terms on this slide” box defines every symbol and word; “Calculation, step by step” plugs real numbers into each formula.</p></div>
+      <div class="card links"><h3><span class="dot"></span>Demos &amp; connections</h3><p>Move the sliders and watch the numbers update. “Connections” links back to what an idea builds on and forward to where it is used.</p></div>
+    </div>
+  </section>
+
+  <section id="loop">
+    <h2>The training loop: where every lecture fits</h2>
+    <span class="note">Training any network repeats the same loop. Each lecture improves one or more of its steps — pick a step to jump to the slides that explain it.</span>
+    <div data-widget="loop" data-scope="course" data-start="update"></div>
+  </section>
+
+  <section>
+    <h2>The story of the course</h2>
+    <span class="note">Each lecture answers one question — and its answer raises the question of the next lecture.</span>
+    <div data-widget="story"></div>
+  </section>
+
+  <section id="concepts">
+    <h2>How the ideas connect</h2>
+    <span class="note">61 key concepts, each linked to the slide that explains it, with what it builds on and what builds on it.</span>
+    <div data-widget="concepts"></div>
+  </section>
+
+  <section>
+    <h2>All lectures</h2>
+    <div data-widget="lectureCards"></div>
+  </section>
+
+  <footer class="credits">Personal study notes for a Deep Learning course. Chapter and equation numbers follow Goodfellow, Bengio &amp; Courville, <em>Deep Learning</em> (MIT Press, 2016). All explanations, diagrams and demos are original; no lecture slides are reproduced here.</footer>
+</main>
+</body>
+</html>
