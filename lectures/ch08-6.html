@@ -125,6 +125,17 @@ window.TOPICS = {
         </dl>
       </details>
       <div class="card fit"><h3><span class="dot"></span>Where it fits in training</h3><p>This is the <b>loss</b> step of the loop. In practice we estimate it on a minibatch instead of all m examples. The lecture keeps this plain version so the formulas stay simple. Everything also works if you add regularization terms such as weight decay.</p></div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Empirical risk J(θ)</dt><dd>Average loss over the training examples.</dd>
+        <dt>Loss L</dt><dd>Error on one example (e.g. negative log-likelihood).</dd>
+        <dt>θ</dt><dd>All weights and biases in one vector.</dd>
+        <dt>Landscape</dt><dd>J drawn as a height above every possible θ.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Four training examples with losses 0.2, 1.0, 0.4, 0.6.</li>
+        <li>\(J=\frac14(0.2+1.0+0.4+0.6)=\frac{2.2}{4}=0.55\).</li>
+        <li>A minibatch of the first two gives the estimate (0.2 + 1.0)/2 = 0.6: noisy but cheap.</li>
+      </ol></div>
     </div>
     <div data-widget="riskDemo"></div>
   </div>
@@ -163,6 +174,17 @@ window.TOPICS = {
         </dl>
       </details>
       <div class="card analogy"><h3><span class="dot"></span>Analogy</h3><p>Hiking downhill blindfolded. With only the slope, you feel the tilt under your foot and guess a stride length. If you also feel the curvature (how the tilt changes as you shuffle forward), you can <b>estimate where the valley floor is</b> and jump there directly.</p></div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Gradient ∇J</dt><dd>Vector of slopes: direction of steepest ascent.</dd>
+        <dt>Hessian H</dt><dd>Matrix of second derivatives \(\partial^2J/\partial\theta_i\partial\theta_j\): the curvature.</dd>
+        <dt>Taylor series</dt><dd>Approximate a function near a point by a polynomial.</dd>
+        <dt>Positive definite</dt><dd>All eigenvalues &gt; 0: curves up in every direction.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>\(J(\theta)=(\theta-3)^2+1\) at \(\theta_0=1\): \(J=5\), \(J'=2(1-3)=-4\), \(J''=2\).</li>
+        <li>Parabola: \(5-4(\theta-1)+(\theta-1)^2\). Its bottom: \(\theta=\theta_0-J'/J''=1+4/2=3\) — exact here.</li>
+        <li>Gradient descent with ε = 0.1 only moves to \(1+0.1\times4=1.4\).</li>
+      </ol></div>
     </div>
     <div data-widget="taylor1d"></div>
   </div>
@@ -204,6 +226,16 @@ window.TOPICS = {
         </ol>
         <p class="note" style="margin-top:8px">This only works as long as H stays <b>positive definite</b>. The next slide shows what happens when it does not.</p>
       </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Quadratic approximation</dt><dd>The bowl-shaped 2nd-order Taylor model (8.26).</dd>
+        <dt>H⁻¹</dt><dd>Inverse Hessian: rescales the gradient per direction.</dd>
+        <dt>Newton step</dt><dd>\(-\boldsymbol H^{-1}\nabla J\).</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>\(J=\tfrac12(\theta_1^2+10\theta_2^2)\): \(\boldsymbol H=\mathrm{diag}(1,10)\). At \(\boldsymbol\theta_0=(2,1)\): \(\boldsymbol g=(2,10)\).</li>
+        <li>\(\boldsymbol H^{-1}\boldsymbol g=(2/1,\ 10/10)=(2,1)\) → \(\boldsymbol\theta^*=(2,1)-(2,1)=(0,0)\): the minimum in one step.</li>
+        <li>Gradient descent with ε = 0.1: \((2-0.2,\ 1-1)=(1.8,0)\) — and ε ≥ 0.2 would already diverge along θ₂.</li>
+      </ol></div>
     </div>
     <div data-widget="playground" data-preset="newton" data-title="Gradient descent vs. Newton" data-sub="Raise the bowl's stretch κ: gradient descent zig-zags more and more, while Newton still lands in one step. Switch to the curvy bowl to see Newton iterate."></div>
   </div>
@@ -239,6 +271,16 @@ window.TOPICS = {
       <div class="card"><h3><span class="dot"></span>The trade-off</h3>
         <p>If the negative curvature is strong, α must be <b>large</b>. But then \(\boldsymbol H+\alpha\boldsymbol I\approx\alpha\boldsymbol I\), so the update becomes \(-\frac{1}{\alpha}\nabla J\): plain gradient descent with learning rate 1/α. With very strong negative curvature, the step can even be <b>smaller</b> than a well-tuned gradient descent step. All of Newton's advantage is gone.</p>
       </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Saddle point</dt><dd>Zero gradient, but up in some directions and down in others.</dd>
+        <dt>αI</dt><dd>α times the identity: adds α to every eigenvalue of H.</dd>
+        <dt>Levenberg–Marquardt</dt><dd>Newton with a damping term αI.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>\(J=\tfrac12(\theta_1^2-\theta_2^2)\): \(\boldsymbol H=\mathrm{diag}(1,-1)\). At (1, 0.5): \(\boldsymbol g=(1,-0.5)\), J = 0.375.</li>
+        <li>Newton: \(\boldsymbol H^{-1}\boldsymbol g=(1,0.5)\) → jumps to (0, 0), the saddle.</li>
+        <li>α = 2: \(\boldsymbol H+2\boldsymbol I=\mathrm{diag}(3,1)\) → step \((1/3,-0.5)\) → (0.667, 1.0), where J = −0.278: downhill.</li>
+      </ol></div>
     </div>
     <div data-widget="playground" data-preset="saddle" data-title="Saddle point: Newton vs. regularized Newton" data-sub="All three start in the zone where H has a negative eigenvalue. Watch plain Newton get pulled into the saddle, then vary α."></div>
   </div>
@@ -279,6 +321,16 @@ window.TOPICS = {
           <li><b>L-BFGS</b> builds that estimate from a few vectors (≈ k memory).</li>
         </ul>
       </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>k</dt><dd>Number of parameters.</dd>
+        <dt>O(k³)</dt><dd>Cost grows like k cubed: 10× more parameters → 1000× more work.</dd>
+        <dt>Per-iteration cost</dt><dd>Work repeated at every update, because H changes with θ.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>k = 10⁶ parameters (a small modern network).</li>
+        <li>Hessian entries: k² = 10¹² → about 4 TB in 32-bit floats (the gradient is only 4 MB).</li>
+        <li>Inversion ≈ k³ = 10¹⁸ operations; at 10¹³ per second that is 10⁵ s ≈ 28 hours — for one step.</li>
+      </ol></div>
     </div>
     <div data-widget="newtonCost"></div>
   </div>
@@ -302,6 +354,17 @@ window.TOPICS = {
       <div class="math">\[ \epsilon^*=\arg\min_{\epsilon}\,J\big(\boldsymbol\theta-\epsilon\nabla_{\boldsymbol\theta}J(\boldsymbol\theta)\big) \]</div>
       <div class="math">\[ \text{at the end of the line search: }\ \nabla_{\boldsymbol\theta}J(\boldsymbol\theta)\cdot\boldsymbol d_{t-1}=0\ \Rightarrow\ \boldsymbol d_t\perp\boldsymbol d_{t-1} \]</div>
       <div class="card analogy"><h3><span class="dot"></span>Analogy</h3><p>Walking down a narrow canyon by always going <b>straight downhill</b>: you hit one wall, turn 90°, hit the other wall, turn 90° again… You bounce between the walls and only creep along the canyon floor.</p></div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Line search</dt><dd>Try step sizes along one direction and keep the best.</dd>
+        <dt>ε*</dt><dd>The best step size along the line (argmin).</dd>
+        <dt>Perpendicular</dt><dd>At 90°: dot product equals 0.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>\(J=\tfrac12(x^2+10y^2)\) at (10, 1): \(\boldsymbol g=(10,10)\).</li>
+        <li>Exact line search on a quadratic: \(\epsilon^*=\frac{\boldsymbol g^\top\boldsymbol g}{\boldsymbol g^\top\boldsymbol H\boldsymbol g}=\frac{200}{100+1000}=0.182\).</li>
+        <li>New point (10 − 1.82, 1 − 1.82) = (8.18, −0.82); new gradient (8.18, −8.18).</li>
+        <li>Check: (8.18, −8.18) · (10, 10) = 0 → the next direction is perpendicular: zig-zag.</li>
+      </ol></div>
     </div>
     <div data-widget="playground" data-preset="steepest" data-title="Steepest descent with exact line search" data-sub="The small square markers show the 90° turns. Turn on plain gradient descent to compare."></div>
   </div>
@@ -335,6 +398,17 @@ window.TOPICS = {
       <div class="math">\[ \text{Fletcher–Reeves:}\quad \beta_t=\frac{\nabla_{\boldsymbol\theta}J(\boldsymbol\theta_t)^{\top}\nabla_{\boldsymbol\theta}J(\boldsymbol\theta_t)}{\nabla_{\boldsymbol\theta}J(\boldsymbol\theta_{t-1})^{\top}\nabla_{\boldsymbol\theta}J(\boldsymbol\theta_{t-1})} \]<span class="eqno">(8.31)</span>
       \[ \text{Polak–Ribière:}\quad \beta_t=\frac{\big(\nabla_{\boldsymbol\theta}J(\boldsymbol\theta_t)-\nabla_{\boldsymbol\theta}J(\boldsymbol\theta_{t-1})\big)^{\top}\nabla_{\boldsymbol\theta}J(\boldsymbol\theta_t)}{\nabla_{\boldsymbol\theta}J(\boldsymbol\theta_{t-1})^{\top}\nabla_{\boldsymbol\theta}J(\boldsymbol\theta_{t-1})} \]<span class="eqno">(8.32)</span></div>
       <div class="card analogy"><h3><span class="dot"></span>Analogy for “conjugate”</h3><p>Imagine squashing the stretched valley until it becomes a perfectly round bowl. In a round bowl, perpendicular moves never interfere with each other. Conjugate directions are just “<b>perpendicular in that squashed space</b>”, and H is what does the squashing.</p></div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Conjugate directions</dt><dd>\(\boldsymbol d_t^\top\boldsymbol H\boldsymbol d_{t-1}=0\): moving along one does not spoil the other.</dd>
+        <dt>β_t</dt><dd>How much of the previous direction is mixed in.</dd>
+        <dt>Fletcher–Reeves / Polak–Ribière</dt><dd>Two formulas for β using gradients only.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Continue the example: \(\boldsymbol g_0=(10,10)\), \(\boldsymbol g_1=(8.18,-8.18)\).</li>
+        <li>FR: \(\beta_1=\frac{8.18^2+8.18^2}{10^2+10^2}=\frac{133.9}{200}=0.669\).</li>
+        <li>\(\boldsymbol d_1=\boldsymbol g_1+\beta_1\boldsymbol d_0=(8.18+6.69,\ -8.18+6.69)=(14.88,-1.49)\).</li>
+        <li>Conjugate? \(\boldsymbol d_1^\top\boldsymbol H\boldsymbol d_0=14.88\cdot10-1.49\cdot100\approx0\) ✓. A line search along \(-\boldsymbol d_1\) lands on (0, 0): 2 steps in 2-D.</li>
+      </ol></div>
     </div>
     <div data-widget="playground" data-preset="cg" data-title="Steepest descent vs. conjugate gradients" data-sub="Both use exact line searches. Count the steps: on the quadratic bowl CG finishes in 2."></div>
   </div>
@@ -366,6 +440,16 @@ window.TOPICS = {
       </div>
       <div class="card"><h3><span class="dot"></span>Fletcher–Reeves vs. Polak–Ribière</h3><p>On a quadratic with exact line searches the two formulas agree. On curvy losses they differ. Polak–Ribière tends to behave better: when the gradient barely changes between steps, its β drops toward 0, which acts like an <b>automatic reset</b>.</p></div>
       <div class="card fit"><h3><span class="dot"></span>Where it fits in training</h3><p>CG replaces the <b>update rule</b>. It needs only gradients (O(k) memory), but every step needs a line search, which means several extra loss evaluations.</p></div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Nonlinear CG</dt><dd>CG applied to a non-quadratic loss.</dd>
+        <dt>Reset</dt><dd>Forget the old direction and restart with the plain gradient.</dd>
+        <dt>Warm start</dt><dd>A few SGD steps before switching to CG.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Gradient barely changes: \(\boldsymbol g_{t-1}=(2,0)\), \(\boldsymbol g_t=(1.9,0.1)\).</li>
+        <li>FR: \(\beta=\frac{1.9^2+0.1^2}{4}=0.905\) — keeps 90% of the stale direction.</li>
+        <li>PR: \(\beta=\frac{(-0.1)(1.9)+(0.1)(0.1)}{4}=-0.045\approx0\) — an automatic reset.</li>
+      </ol></div>
     </div>
     <div data-widget="playground" data-preset="ncg" data-title="CG on a curvy (non-quadratic) valley" data-sub="Try both β formulas and the reset option. The banana valley is a classic hard test for optimizers."></div>
   </div>
@@ -396,6 +480,18 @@ window.TOPICS = {
         <div class="card today"><h3><span class="dot"></span>Strength</h3><p>Like CG it uses line searches, but it does <b>not</b> need them to be very precise. It can spend less time refining each line search.</p></div>
         <div class="card warn"><h3><span class="dot"></span>Weakness</h3><p>It must <b>store M</b>: k × k numbers, O(k²) memory. That is impossible for networks with millions of parameters.</p></div>
       </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Quasi-Newton</dt><dd>Approximates H or H⁻¹ from gradients only.</dd>
+        <dt>M_t</dt><dd>Running estimate of H⁻¹.</dd>
+        <dt>s, y</dt><dd>Step taken, and change in gradient it caused.</dd>
+        <dt>Secant condition</dt><dd>\(\boldsymbol M_{t+1}\boldsymbol y=\boldsymbol s\).</dd>
+        <dt>Low-rank update</dt><dd>A correction built from a few outer products (here rank 2).</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>1-D: a step s = 0.5 changed the gradient by y = 2 → curvature ≈ y/s = 4.</li>
+        <li>BFGS in 1-D: \(r=1/(ys)=1\), \(1-rsy=0\) → \(M_{t+1}=rs^2=s/y=0.25=1/4\): exactly 1/curvature.</li>
+        <li>Memory for k = 10⁶: M has 10¹² numbers — the reason for L-BFGS.</li>
+      </ol></div>
     </div>
     <div data-widget="playground" data-preset="bfgs" data-title="BFGS learns the curvature as it goes" data-sub="Below the map, compare BFGS's estimate M with the true H⁻¹. It gets close using gradients only. Then set <b>Line search → Rough</b>: CG needs many more steps (about 81 vs 11), while BFGS barely suffers (18 vs 8). That is the “less time refining each line search” advantage."></div>
   </div>
@@ -442,6 +538,16 @@ window.TOPICS = {
         </div>
       </div>
       <div class="card today"><h3><span class="dot"></span>Today</h3><p>L-BFGS is still popular for smaller, <b>full-batch</b>, smooth problems, for example classic machine-learning models and some scientific and style-transfer problems. In big minibatch deep learning, noisy gradients spoil its curvature estimates, so SGD-style methods dominate.</p></div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Limited memory</dt><dd>Store only the last m (s, y) pairs, not M.</dd>
+        <dt>m</dt><dd>Number of stored pairs (typically 3–20).</dd>
+        <dt>Full-batch</dt><dd>Gradient computed on the whole training set.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>k = 10⁶, m = 5 pairs: 2 × 5 × 10⁶ = 10⁷ numbers ≈ 40 MB.</li>
+        <li>BFGS would need k² = 10¹² numbers ≈ 4 TB: L-BFGS uses 100 000× less memory.</li>
+        <li>Work per step ≈ 4mk = 2 × 10⁷ multiply-adds — like a few extra gradient evaluations.</li>
+      </ol></div>
     </div>
     <div data-widget="playground" data-preset="lbfgs" data-title="BFGS vs. L-BFGS" data-sub="With a rough line search, more memory helps: m = 1 needs about 28 steps, m = 2 about 19, close to full BFGS (18). Now switch to an <b>exact</b> line search: L-BFGS matches BFGS step for step, because its directions become conjugate, as the lecture says."></div>
   </div>
@@ -467,6 +573,15 @@ window.TOPICS = {
         </ol>
       </div>
       <div class="card fit"><h3><span class="dot"></span>The big lesson of Part A</h3><p>Curvature information makes each step <b>much better</b>, but it is expensive to get, and it can be <b>misleading</b> near saddle points. For huge, noisy, saddle-filled deep-learning problems, first-order methods such as SGD, momentum and Adam usually win on cost. Part B attacks the problem from the other side: make the <b>landscape itself</b> easier.</p></div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>κ (condition number)</dt><dd>Stretch of the bowl: largest / smallest curvature.</dd>
+        <dt>Convergence rate</dt><dd>Factor by which the error shrinks per step.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Bowl with κ = 20: well-tuned gradient descent shrinks the error by about (1 − 1/κ) = 0.95 per step.</li>
+        <li>To shrink it 10⁶×: \(\ln 10^6/(-\ln0.95)=13.8/0.0513\approx270\) steps.</li>
+        <li>Newton: 1 step. CG and BFGS (exact line search): at most k = 2 steps.</li>
+      </ol></div>
     </div>
     <div data-widget="playground" data-preset="all" data-title="Full playground"></div>
   </div>
@@ -518,6 +633,15 @@ window.TOPICS = {
         <p>Multiplying this out gives higher-order terms, up to order l, such as \(\epsilon^2 g_1g_2\prod_{i=3}^{l}w_i\). That term is tiny if the other weights are small, and <b>exponentially large</b> if they are bigger than 1.</p>
       </div>
       <div class="card warn"><h3><span class="dot"></span>Why that is a big deal</h3><p>The effect of updating one layer depends strongly on <b>all the other layers</b>, so choosing a good learning rate becomes very hard. Second-order methods can account for 2nd-order interactions, but they are expensive and approximate, and deep networks also have 3rd, 4th, … order interactions. An n-th order method for n &gt; 2 seems hopeless. We need a different idea: <b>change the model</b> instead of the optimizer.</p></div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Higher-order effects</dt><dd>Terms with ε², ε³ …: changes that interact.</dd>
+        <dt>First-order prediction</dt><dd>Change ≈ \(-\epsilon\,\boldsymbol g^\top\boldsymbol g\), assuming other layers stay fixed.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Three layers, x = 1, w = (2, 2, 2): ŷ = 8. Each \(g_i\) = product of the other two = 4, so \(\boldsymbol g^\top\boldsymbol g=48\).</li>
+        <li>Aim for a drop of 4: \(\epsilon=4/48=0.0833\) → every w becomes 2 − 0.333 = 1.667.</li>
+        <li>Real output: \(1.667^3=4.63\) — a drop of 3.37, not 4. The \(\epsilon^2\) and \(\epsilon^3\) terms (e.g. \(\epsilon^2g_1g_2w_3=0.22\)) matter.</li>
+      </ol></div>
     </div>
     <div data-widget="chain"></div>
   </div>
@@ -555,6 +679,17 @@ window.TOPICS = {
         </dl>
       </details>
       <div class="card fit"><h3><span class="dot"></span>Where it fits in training</h3><p>BN is <b>part of the model</b>, in the forward pass, and its statistics come from the current <b>minibatch</b>. The optimizer is unchanged. Because the layer below can no longer change this layer's input scale or offset, the cross-layer interference from the previous slide largely disappears.</p></div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Minibatch statistics</dt><dd>Mean μ and std σ of each unit over the examples in the batch.</dd>
+        <dt>Broadcast</dt><dd>The same μ_j, σ_j are used for every row of column j.</dd>
+        <dt>δ</dt><dd>Small constant (e.g. 10⁻⁸) for numerical safety.</dd>
+        <dt>Reparametrization</dt><dd>Same family of functions, written in a form that is easier to learn.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>One unit, batch of 4: h = (2, 4, 6, 8).</li>
+        <li>\(\mu=5\); variance \(=\frac{9+1+1+9}{4}=5\) → \(\sigma=\sqrt5=2.236\).</li>
+        <li>\(h'=(h-\mu)/\sigma=(-1.342,-0.447,0.447,1.342)\): mean 0, std 1.</li>
+      </ol></div>
     </div>
     <div data-widget="bnSteps"></div>
   </div>
@@ -589,6 +724,16 @@ window.TOPICS = {
         <p style="margin-top:8px">BN sidesteps both: the units are standardized <b>by definition</b>, so there is nothing to fight.</p>
       </div>
       <div class="card analogy"><h3><span class="dot"></span>Analogy</h3><p>Keeping a room at 20 °C. A penalty is like asking people politely not to touch the heater, so the temperature still drifts. Renormalizing is like someone keeps turning it up while you keep turning it down: lots of wasted effort. BN <b>removes the dial</b>, so nobody wastes energy trying.</p></div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Upstream gradient g′</dt><dd>\(\partial J/\partial h'\) arriving from the layer above.</dd>
+        <dt>⊙</dt><dd>Element-wise product.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Continue: \(h'=(-1.342,-0.447,0.447,1.342)\), σ = 2.236, upstream \(g'=(0.5,-0.2,0.1,0.6)\).</li>
+        <li>Back-prop through μ and σ: \(\frac{\partial J}{\partial h_i}=\frac1\sigma\big(g'_i-\overline{g'}-h'_i\,\overline{g'\odot h'}\big)\) with \(\overline{g'}=0.25\), \(\overline{g'\odot h'}=0.067\).</li>
+        <li>Result: (0.152, −0.188, −0.081, 0.116).</li>
+        <li>Sum = 0.000: no push to shift the mean. \(\sum_i h'_i\,\partial J/\partial h_i=0.000\): no push to change the scale.</li>
+      </ol></div>
     </div>
     <div data-widget="bnApproaches"></div>
   </div>
@@ -617,6 +762,15 @@ window.TOPICS = {
       <div class="math">\[ \hat{\boldsymbol\mu}\leftarrow 0.9\,\hat{\boldsymbol\mu}+0.1\,\boldsymbol\mu_{\text{batch}},\qquad \hat{\boldsymbol\sigma}^2\leftarrow 0.9\,\hat{\boldsymbol\sigma}^2+0.1\,\boldsymbol\sigma^2_{\text{batch}} \]</div>
       <p class="note">0.1 is a typical “momentum” value (it is PyTorch's default). Any exponential moving average works.</p>
       <div class="card today"><h3><span class="dot"></span>Practical tip</h3><p>In PyTorch, <code>model.train()</code> uses batch statistics and updates the running averages, while <code>model.eval()</code> switches to the running averages. Forgetting <code>model.eval()</code> before testing is a classic bug, and the demo shows why.</p></div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Running average</dt><dd>Exponential moving average of the batch statistics.</dd>
+        <dt>model.eval()</dt><dd>Switch a PyTorch model to test behaviour (running statistics).</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Start \(\hat\mu=0\); every batch has μ = 5: \(\hat\mu\) = 0.5, 0.95, 1.355, …</li>
+        <li>After n batches \(\hat\mu=5(1-0.9^n)\): n = 20 → 4.39, n = 50 → 4.97.</li>
+        <li>Test input h = 6 with \(\hat\mu=4.97,\ \hat\sigma=2.24\): \(h'=(6-4.97)/2.24=0.46\), independent of any other test example.</li>
+      </ol></div>
     </div>
     <div data-widget="runningStats"></div>
   </div>
@@ -654,6 +808,16 @@ window.TOPICS = {
           <li><b>Convolutional nets:</b> use the same μ and σ at <b>every spatial location</b> of a feature map, so the map's statistics do not depend on position.</li>
         </ul>
       </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>γ (gamma)</dt><dd>Learned scale after normalization.</dd>
+        <dt>β (beta)</dt><dd>Learned shift after normalization.</dd>
+        <dt>φ</dt><dd>The activation function.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>\(h'=(-1.342,-0.447,0.447,1.342)\), γ = 2, β = 3.</li>
+        <li>\(\gamma h'+\beta=(0.317,\ 2.106,\ 3.894,\ 5.683)\): mean exactly β = 3, std exactly γ = 2.</li>
+        <li>A BN layer on 256 units learns 2 × 256 = 512 parameters (γ, β) and keeps 512 running statistics (not learned).</li>
+      </ol></div>
     </div>
     <div data-widget="cnnBN"></div>
   </div>
@@ -683,6 +847,16 @@ window.TOPICS = {
       <div class="card warn"><h3><span class="dot"></span>Non-convex problems</h3><p>The path can wander through very different regions, and points from the <b>distant past</b> may be separated from the current one by big barriers in the loss, so averaging them in is not useful. So use an <b>exponentially decaying running average</b>, which gradually forgets the past:</p>
         <div class="math">\[ \hat{\boldsymbol\theta}^{(t)}=\alpha\,\hat{\boldsymbol\theta}^{(t-1)}+(1-\alpha)\,\boldsymbol\theta^{(t)} \]<span class="eqno">(8.39)</span></div></div>
       <div class="card today"><h3><span class="dot"></span>Today</h3><p>Keeping an exponential moving average (EMA) of the weights, and evaluating with the averaged copy, is a widely used trick in modern training, for example in image-generation models. It costs one extra copy of θ. The optimizer itself does not change.</p></div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Iterate θ⁽ⁱ⁾</dt><dd>Parameters after step i.</dd>
+        <dt>EMA</dt><dd>Exponential moving average, weight α on the old value.</dd>
+        <dt>Effective window</dt><dd>About 1/(1 − α) recent steps.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Iterates bouncing across a valley at 0: 1.2, −0.8, 1.1, −0.9.</li>
+        <li>Average: \((1.2-0.8+1.1-0.9)/4=0.15\) — closer to 0 than any single iterate (best |θ| = 0.8).</li>
+        <li>EMA with α = 0.9 averages over ≈ 1/(1 − 0.9) = 10 recent steps.</li>
+      </ol></div>
     </div>
     <div data-widget="polyak"></div>
   </div>
@@ -718,6 +892,16 @@ window.TOPICS = {
         <p>Then a <b>fine-tuning</b> stage optimizes everything jointly. Starting the joint optimization from the greedy solution can greatly speed it up and improve the result.</p>
       </div>
       <div class="card fit"><h3><span class="dot"></span>Where it fits in training</h3><p>Pretraining is a smarter <b>initialization</b>. It puts θ in a region where ordinary local descent can find a good solution. Why should it help? The hypothesis is that it gives <b>better guidance to the intermediate layers</b> of a deep hierarchy.</p></div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Pretraining</dt><dd>Training simpler models or tasks first, to get a starting point.</dd>
+        <dt>Greedy</dt><dd>Optimize each piece separately, one at a time.</dd>
+        <dt>Fine-tuning</dt><dd>Joint training of all pieces afterwards.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Network 784 → 500 → 500 → 10.</li>
+        <li>Greedy stage 1: 784·500 + 500 = 392 500 weights; stage 2: 500·500 + 500 = 250 500; stage 3: 500·10 + 10 = 5 010.</li>
+        <li>Fine-tuning then optimizes all 648 010 together, starting from the greedy solution.</li>
+      </ol></div>
     </div>
     <div data-widget="pretrain"></div>
   </div>
@@ -753,6 +937,18 @@ window.TOPICS = {
         <p class="note">A thin, deep network looks harder to train, but it may generalize better and costs far less to run if it has few parameters.</p>
       </div>
       <div class="card today"><h3><span class="dot"></span>Today</h3><p>These ideas are everywhere: starting from a <b>pretrained backbone</b> and fine-tuning it (transfer learning), and training small students from big teachers (<b>knowledge distillation</b>).</p></div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Transfer learning</dt><dd>Reuse layers trained on one task for another task.</dd>
+        <dt>Teacher / student</dt><dd>A trained network guides the training of another.</dd>
+        <dt>Hint</dt><dd>Target for the student’s middle layer from the teacher.</dd>
+        <dt>r(·)</dt><dd>Extra regressor mapping student features to teacher features.</dd>
+        <dt>λ</dt><dd>Weight of the hint term.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Task loss 0.7, hint error \(\|\boldsymbol h^{\text{teacher}}-r(\boldsymbol h^{\text{student}})\|^2=2.0\), λ = 0.1.</li>
+        <li>\(\mathcal L=0.7+0.1\times2.0=0.9\).</li>
+        <li>Transfer: copy the first 5 of 8 layers; only the top 3 start random and must be learned from the small new dataset.</li>
+      </ol></div>
     </div>
     <div data-widget="pretrainVariants"></div>
   </div>
@@ -787,6 +983,16 @@ window.TOPICS = {
         </ul>
       </div>
       <div data-widget="actShapes"></div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Skip connection</dt><dd>A path that bypasses some layers (y = x + f(x)).</dd>
+        <dt>Auxiliary head</dt><dd>Extra output attached to a middle layer during training.</dd>
+        <dt>Singular values</dt><dd>How much a Jacobian stretches vectors; ~1 keeps gradients healthy.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Gradient through 10 sigmoid layers: each derivative ≤ 0.25 → at most 0.25¹⁰ ≈ 9.5 × 10⁻⁷.</li>
+        <li>Through 10 active ReLUs: 1¹⁰ = 1 (times the weights).</li>
+        <li>Skip connection \(y=x+f(x)\): \(\partial y/\partial x=1+f'(x)\) — the “1” always lets gradient through.</li>
+      </ol></div>
     </div>
     <div data-widget="gradFlow"></div>
   </div>
@@ -821,6 +1027,16 @@ window.TOPICS = {
         <p>Many bumpy non-convex functions become <b>approximately convex</b> when blurred, yet the blur keeps enough information about where the global minimum is. Then reduce σ step by step.</p>
       </div>
       <div class="card analogy"><h3><span class="dot"></span>Analogy</h3><p><b>Squint</b> at a mountain range: the little bumps disappear and you see the big valley. Walk toward it, then slowly open your eyes and fine-tune your position among the details.</p></div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Continuation method</dt><dd>Solve a sequence of easier problems leading to the real one.</dd>
+        <dt>Gaussian blur</dt><dd>Average J over nearby points drawn from a Gaussian.</dd>
+        <dt>σ⁽ⁱ⁾</dt><dd>Blur width at stage i, decreased step by step.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>\(J(\theta)=\theta^2+0.5\cos 8\theta\): bowl + bumps.</li>
+        <li>Blurring with std σ multiplies \(\cos(b\theta)\) by \(e^{-b^2\sigma^2/2}\) and adds σ² to θ².</li>
+        <li>σ = 0.5: bump factor \(e^{-8}=0.0003\) → a smooth bowl. σ = 0.1: \(e^{-0.32}=0.73\) → bumps return; sharpen gradually.</li>
+      </ol></div>
     </div>
     <div data-widget="continuation" data-presets="wiggly"></div>
   </div>
@@ -860,6 +1076,15 @@ window.TOPICS = {
           <li>make local update directions point more toward the global solution.</li>
         </ul>
       </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>NP-hard</dt><dd>A problem class believed to have no efficient algorithm.</dd>
+        <dt>Basin</dt><dd>Region of θ that local descent leads to one particular minimum.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>\(J(\theta)=-\theta^2\): blurred \(\mathbb E[-(\theta+\varepsilon)^2]=-\theta^2-\sigma^2\).</li>
+        <li>Still an upside-down parabola for every σ: blurring never makes it convex.</li>
+        <li>A wiggly loss whose blurred minimum sits over a local basin leads continuation to the wrong place.</li>
+      </ol></div>
     </div>
     <div data-widget="continuation" data-presets="hole,negsq,wiggly" data-title="Try the failure cases" data-sub="Choose a loss function, then run continuation and plain gradient descent from the same start."></div>
   </div>
@@ -882,6 +1107,16 @@ window.TOPICS = {
       <div class="card"><h3><span class="dot"></span>Why it is a continuation method</h3><p>The early objectives \(J^{(i)}\) are made easier by increasing the influence of <b>simple examples</b>, either by giving their losses <b>larger weights</b> or by <b>sampling them more often</b>. The final objective is the ordinary loss over the full training set.</p></div>
       <div class="card today"><h3><span class="dot"></span>The surprising result</h3><p>In the experiment discussed in the lecture, where harder examples have longer-term dependencies, a <b>deterministic</b> curriculum (easy first, then hard) gave <b>no improvement</b> over ordinary training. A <b>stochastic</b> curriculum did much better: always a random mix of easy and hard examples, with the <em>average share</em> of hard ones gradually increased.</p></div>
       <div class="card analogy"><h3><span class="dot"></span>Analogy</h3><p>A language course that only drills the alphabet for a month, then only grammar, then only essays, makes you forget earlier skills and struggle at each jump. A course that mixes a little of everything, and shifts toward harder material week by week, works better.</p></div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Curriculum learning</dt><dd>Order or weight training examples from easy to hard.</dd>
+        <dt>Deterministic curriculum</dt><dd>Fixed order: all easy first, then hard.</dd>
+        <dt>Stochastic curriculum</dt><dd>Random mix whose share of hard examples grows.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Weighted objective: easy loss 0.2 (weight 3), hard loss 1.0 (weight 1), equal amounts of data.</li>
+        <li>\(J^{(0)}=\frac{3(0.2)+1(1.0)}{4}=0.4\) vs the final unweighted \(J=\frac{0.2+1.0}{2}=0.6\).</li>
+        <li>Stochastic schedule: hard share 10% → 100% over 10 epochs; at 37%, a minibatch of 32 has about 12 hard examples.</li>
+      </ol></div>
     </div>
     <div data-widget="curriculum"></div>
   </div>
