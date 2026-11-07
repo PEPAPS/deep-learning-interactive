@@ -412,8 +412,11 @@ Widgets.playground = (el, ds) => {
   const cfg = PRESETS[ds.preset || 'all'];
   const P = {
     func: cfg.funcs[0], kappa: cfg.kappa || 8, lr: FUNCS[cfg.funcs[0]].lr, alpha: cfg.alpha ?? 1.5,
-    m: cfg.m || 2, cgVariant: 'PR', restart: false, ls: cfg.ls || 'exact'
+    m: cfg.m || 2, cgVariant: 'PR', restart: false, ls: cfg.ls || 'exact',
+    mom: cfg.mom ?? 0.9, lrA: cfg.lrA ?? 0.1
   };
+  const FIRST = ['gd', 'momentum', 'nesterov'], ADAPT = ['adagrad', 'rmsprop', 'adam'];
+  if (cfg.lr) P.lr = cfg.lr;
   const enabled = new Set(cfg.on);
   let start = (cfg.start || FUNCS[P.func].start).slice();
   let F = FUNCS[P.func].build(P);
@@ -428,7 +431,7 @@ Widgets.playground = (el, ds) => {
   const top = h('div', { class: 'controls' });
   let funcSel = null;
   if (cfg.funcs.length > 1) funcSel = UI.select(top, 'Loss surface', cfg.funcs.map(k => [k, FUNCS[k].label]), P.func, v => {
-    P.func = v; P.lr = FUNCS[v].lr; lrS && lrS.set(Math.log10(P.lr)); start = FUNCS[v].start.slice(); rebuild();
+    P.func = v; P.lr = (cfg.lrBy && cfg.lrBy[v]) || FUNCS[v].lr; lrS && lrS.set(Math.log10(P.lr)); start = FUNCS[v].start.slice(); rebuild();
   });
   el.append(top);
   const chips = h('div', { class: 'toggles' });
@@ -437,7 +440,9 @@ Widgets.playground = (el, ds) => {
 
   const params = h('div', { class: 'controls' });
   const kS = UI.slider(params, { label: 'Stretch of the bowl (κ)', min: 1, max: 20, step: 1, value: P.kappa, fmt: v => v + '×', onInput: v => { P.kappa = v; rebuild(); } });
-  const lrS = cfg.methods.includes('gd') ? UI.slider(params, { label: 'GD learning rate ε', min: -3, max: 0, step: 0.01, value: Math.log10(P.lr), fmt: v => (10 ** v).toPrecision(2), onInput: v => { P.lr = 10 ** v; reset(); } }) : null;
+  const lrS = cfg.methods.some(k => FIRST.includes(k)) ? UI.slider(params, { label: 'Learning rate ε (GD / momentum)', min: -3, max: 0, step: 0.01, value: Math.log10(P.lr), fmt: v => (10 ** v).toPrecision(2), onInput: v => { P.lr = 10 ** v; reset(); } }) : null;
+  const momS = cfg.methods.some(k => k === 'momentum' || k === 'nesterov') ? UI.slider(params, { label: 'Momentum α', min: 0, max: 0.99, step: 0.01, value: P.mom, fmt: v => v.toFixed(2), onInput: v => { P.mom = v; reset(); } }) : null;
+  const lrAS = cfg.methods.some(k => ADAPT.includes(k)) ? UI.slider(params, { label: 'Step size ε (AdaGrad / RMSProp / Adam)', min: -3, max: 0, step: 0.01, value: Math.log10(P.lrA), fmt: v => (10 ** v).toPrecision(2), onInput: v => { P.lrA = 10 ** v; reset(); } }) : null;
   const aS = cfg.methods.includes('regnewton') ? UI.slider(params, { label: 'Regularization α', min: 0, max: 4, step: 0.05, value: P.alpha, fmt: v => v.toFixed(2), onInput: v => { P.alpha = v; reset(); } }) : null;
   const mS = cfg.methods.includes('lbfgs') ? UI.slider(params, { label: 'L-BFGS memory m (pairs kept)', min: 1, max: 4, step: 1, value: P.m, fmt: v => String(v), onInput: v => { P.m = v; reset(); } }) : null;
   const lsSel = cfg.showLS ? UI.select(params, 'Line search', [['exact', 'Exact (precise, costly)'], ['rough', 'Rough (backtracking, cheap)']], P.ls, v => { P.ls = v; reset(); }) : null;
@@ -478,7 +483,9 @@ Widgets.playground = (el, ds) => {
 
   function syncControls() {
     kS.show(!!FUNCS[P.func].usesKappa);
-    lrS && lrS.show(enabled.has('gd'));
+    lrS && lrS.show(FIRST.some(k => enabled.has(k)));
+    momS && momS.show(enabled.has('momentum') || enabled.has('nesterov'));
+    lrAS && lrAS.show(ADAPT.some(k => enabled.has(k)));
     aS && aS.show(enabled.has('regnewton'));
     mS && mS.show(enabled.has('lbfgs'));
     cgSel && cgSel.show(enabled.has('cg'));

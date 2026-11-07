@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Optimization II: SGD, Momentum, Adam &amp; Initialization</title>
+<meta name="description" content="Interactive notes for Deep Learning chapter 8.3–8.5: SGD and learning-rate schedules, momentum and its physics, Nesterov momentum, AdaGrad, RMSProp, Adam, choosing an optimizer, and parameter initialization strategies.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232a78d6'/%3E%3Cpath d='M6 9c5 0 6 14 10 14s5-14 10-14' fill='none' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<link rel="stylesheet" href="../css/style.css?v=13">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script defer src="../js/core.js?v=13"></script>
+<script defer src="../js/course.js?v=13"></script>
+<script defer src="../js/quiz.js?v=13"></script>
+<script defer src="../js/lectures/ch08-6a.js?v=13"></script>
+<script defer src="../js/lectures/ch08-3.js?v=13"></script>
+</head>
+<body data-page="lecture" data-lecture="ch08-3">
+<script>
+window.TOPICS = {
+  init: [['s-init', 'Break symmetry with random weights'], ['s-init-scale', 'Choose the weight scale'], ['s-init-bias', 'Initialize biases sensibly']],
+  batch: [['s-sgd', 'Minibatch SGD (Algorithm 8.1)']],
+  forward: [['s-init-scale', 'Keep activations well-scaled']],
+  backward: [['s-init-scale', 'Keep gradients well-scaled']],
+  update: [['s-sgd', 'Learning-rate schedule'], ['s-momentum', 'Momentum'], ['s-nesterov', 'Nesterov momentum'], ['s-adagrad', 'AdaGrad'], ['s-rmsprop', 'RMSProp'], ['s-adam', 'Adam'], ['s-choose', 'Which optimizer?']],
+  final: [['s-sgd', 'Watch the learning curves']]
+};
+</script>
+
+<main class="deck" id="deck">
+
+<section class="slide" id="s-title" data-part="Start here" data-title="Welcome: the optimizers we actually use">
+  <div class="slide-head">
+    <span class="kicker">Lecture 8 · Chapter 8.3 – 8.5</span>
+    <h1>Optimization II: SGD, Momentum, Adam &amp; Initialization</h1>
+    <p class="lede">These are the algorithms that train almost every network today. SGD needs a <b>decaying learning rate</b>; <b>momentum</b> builds up speed in consistent directions; <b>AdaGrad, RMSProp and Adam</b> give every parameter its own adaptive step size; and a good <b>initialization</b> decides whether training works at all.</p>
+  </div>
+  <div class="road">
+    <div class="card big"><span class="kicker">Part 1 · 8.3 – 8.5</span><h4>Update rules</h4><ol><li>SGD and learning-rate schedules</li><li>Momentum (and its physics), Nesterov</li><li>AdaGrad, RMSProp, Adam</li><li>Choosing an optimizer</li></ol><button class="btn primary go" type="button" data-goto="s-sgd">Start →</button></div>
+    <div class="card big"><span class="kicker">Part 2 · 8.4</span><h4>Initialization</h4><ol><li>Breaking symmetry</li><li>Choosing the scale of the weights</li><li>Initializing biases and other parameters</li></ol><button class="btn primary go" type="button" data-goto="s-init">Jump to Part 2 →</button></div>
+  </div>
+</section>
+
+<section class="slide" id="s-loop" data-part="Start here" data-title="Where this lecture fits" data-stages="init,batch,update">
+  <div class="slide-head"><span class="kicker">Start here</span><h2>Where this lecture fits in training</h2><div class="stages"></div></div>
+  <p class="bigidea">Part 1 is all about <b>step 7</b> (how to turn a noisy gradient into a good update). Part 2 is about <b>step 2</b> (where to start) — which also decides whether signals survive the forward and backward passes.</p>
+  <div class="stack"><div data-widget="loop"></div>
+    <div class="row3">
+      <div class="card plain"><h3><span class="dot"></span>Problems from L7</h3><p>Noisy minibatch gradients, ill-conditioning, saddles, vanishing/exploding signals.</p></div>
+      <div class="card plain"><h3><span class="dot"></span>Answers here</h3><p>Decay ε for noise; momentum for ill-conditioning; adaptive per-parameter rates for badly scaled directions; careful init for signal flow.</p></div>
+      <div class="card plain"><h3><span class="dot"></span>Compared with L9</h3><p>These are cheap <b>first-order</b> methods (O(k) memory). Lecture 9 tries curvature (second-order) and model changes.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-sgd" data-part="Part 1 · Update rules (8.3, 8.5)" data-title="SGD & learning-rate schedules" data-stages="batch,update,final">
+  <div class="slide-head"><span class="kicker">8.3.1 · Stochastic gradient descent</span><h2>SGD and its learning-rate schedule</h2><div class="stages"></div></div>
+  <p class="bigidea">The minibatch gradient is noisy and that noise <b>doesn’t vanish at the minimum</b>, so SGD must <b>decrease ε over time</b>. Batch gradient descent can keep ε fixed because its gradient really goes to 0.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \hat{\mathbf g}\leftarrow\frac1m\nabla_{\boldsymbol\theta}\sum_iL\big(f(\mathbf x^{(i)};\boldsymbol\theta),y^{(i)}\big) \]
+        \[ \boldsymbol\theta\leftarrow\boldsymbol\theta-\epsilon_k\hat{\mathbf g} \]<span class="eqno">Algorithm 8.1</span>
+        \[ \sum_{k=1}^{\infty}\epsilon_k=\infty,\qquad\sum_{k=1}^{\infty}\epsilon_k^2&lt;\infty \]<span class="eqno">(8.12–8.13) sufficient for convergence</span>
+        \[ \epsilon_k=(1-\alpha)\epsilon_0+\alpha\epsilon_\tau,\qquad\alpha=\frac{k}{\tau} \]<span class="eqno">(8.14) then constant ε_τ after k = τ</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>The two conditions: steps must add up to infinity (so we can travel anywhere) but their squares must stay finite (so the noise eventually dies out).</li>
+          <li>Practice: decay linearly until iteration τ (a few hundred passes over the data), with \(\epsilon_\tau\approx1\%\) of \(\epsilon_0\).</li>
+          <li>Choose ε₀ by watching <b>learning curves</b>: too large → violent oscillations, cost often increases; too small → slow, may get stuck at high cost. The best ε₀ is usually <b>higher</b> than the one that looks best after the first ~100 iterations.</li>
+          <li>Convergence: excess error \(J(\boldsymbol\theta)-\min J\) is \(O(1/\sqrt k)\) for convex problems and \(O(1/k)\) for strongly convex ones. Batch GD is faster in theory, but generalization error can’t fall faster than O(1/k) anyway (Cramér–Rao), and SGD’s cheap fast start wins on big data.</li>
+          <li>One can also <b>increase the minibatch size</b> during training to blend batch and stochastic behaviour.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>\(\epsilon_k\)</dt><dd>Learning rate at iteration k.</dd>
+        <dt>τ, ε_τ</dt><dd>Iteration where decay stops, and the final learning rate.</dd>
+        <dt>Excess error</dt><dd>How much the current cost exceeds the best possible cost.</dd>
+        <dt>Strongly convex</dt><dd>Curves upward at least a fixed amount everywhere (a well-shaped bowl).</dd>
+        <dt>Learning curve</dt><dd>Plot of the cost against training time.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>ε₀ = 0.1, ε_τ = 0.001, τ = 1 000. At k = 500: α = 0.5 → \(\epsilon=0.5(0.1)+0.5(0.001)=0.0505\).</li>
+        <li>At k = 1 000 and beyond: ε = 0.001.</li>
+        <li>Check the conditions for \(\epsilon_k=1/k\): \(\sum1/k\) diverges ✓, \(\sum1/k^2=\pi^2/6\approx1.64\) is finite ✓.</li>
+        <li>A constant ε fails the second condition: \(\sum\epsilon^2=\infty\).</li>
+      </ol></div>
+    </div>
+    <div data-widget="lrSchedule"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch04-3.html#/s-sgd">SGD (L3)</a> and <a href="ch08-1.html#/s-minibatch">minibatch noise (L7)</a>.</span></li>
+    <li><span class="tag same">Compare</span><span><a href="ch08-6.html#/s-polyak">Polyak averaging (L9)</a>: another way to tame SGD’s noise near the minimum.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-momentum" data-part="Part 1 · Update rules (8.3, 8.5)" data-title="Momentum" data-stages="update">
+  <div class="slide-head"><span class="kicker">8.3.2 · Momentum</span><h2>Momentum: keep moving in the consistent direction</h2><div class="stages"></div></div>
+  <p class="bigidea">Keep a <b>velocity</b> v = decaying average of past negative gradients, and move by v. Back-and-forth components cancel; consistent components add up — up to <b>1/(1 − α)</b> times faster.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mathbf v\leftarrow\alpha\mathbf v-\epsilon\nabla_{\boldsymbol\theta}\Big(\frac1m\sum_{i=1}^{m}L\big(f(\mathbf x^{(i)};\boldsymbol\theta),\mathbf y^{(i)}\big)\Big) \]
+        \[ \boldsymbol\theta\leftarrow\boldsymbol\theta+\mathbf v \]<span class="eqno">(8.15–8.16)</span>
+        \[ \text{terminal speed (constant gradient }\mathbf g):\quad\frac{\epsilon\|\mathbf g\|}{1-\alpha} \]<span class="eqno">(8.17)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Designed for high curvature, small but consistent gradients, or noisy gradients.</li>
+          <li>v is the direction and speed of the parameters (unit mass → velocity = momentum). α ∈ [0, 1) sets how fast old gradients are forgotten; the larger α relative to ε, the more past gradients matter.</li>
+          <li>In a narrow canyon, plain gradient steps bounce across the narrow axis; momentum travels along the canyon.</li>
+          <li>Step size depends on how large and how <b>aligned</b> successive gradients are. α = 0.9 → up to 10× the speed of plain gradient descent.</li>
+          <li>Common α: 0.5, 0.9, 0.99; can be increased over time, but adapting α matters less than shrinking ε.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Velocity v</dt><dd>Running, decaying sum of past negative gradients.</dd>
+        <dt>α</dt><dd>Momentum coefficient: fraction of the old velocity kept each step.</dd>
+        <dt>Terminal velocity</dt><dd>The constant speed reached when the gradient stays the same.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>α = 0.9, ε = 0.1, constant gradient g = 1, v₀ = 0.</li>
+        <li>\(v_1=-0.1\); \(v_2=0.9(-0.1)-0.1=-0.19\); \(v_3=0.9(-0.19)-0.1=-0.271\) …</li>
+        <li>Limit: \(v=-\epsilon g/(1-\alpha)=-0.1/0.1=-1\) — 10× the plain step of 0.1.</li>
+        <li>Alternating gradients +1, −1: velocity stays around ±0.05 — oscillations are damped.</li>
+      </ol></div>
+    </div>
+    <div data-widget="playground" data-preset="mom" data-title="Gradient descent vs. momentum" data-sub="Axis-aligned valley: gradient descent bounces across the steep y-direction and crawls along the flat x-direction; momentum builds up speed along it. Then pick the stretched bowl (κ = 15): there α = 0.9 overshoots and spirals — try α ≈ 0.5."></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch08-1.html#/s-illcond">Ill-conditioning (L7)</a> and <a href="ch04-3.html#/s-condition">condition number (L3)</a>.</span></li>
+    <li><span class="tag same">Compare</span><span><a href="ch08-6.html#/s-cg">Conjugate gradients (L9)</a>: also adds a multiple of the previous direction, but chooses it by line search.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-momentum-physics" data-part="Part 1 · Update rules (8.3, 8.5)" data-title="Momentum as physics" data-stages="update">
+  <div class="slide-head"><span class="kicker">8.3.2 · The physics of momentum</span><h2>Momentum as a ball rolling through syrup</h2><div class="stages"></div></div>
+  <p class="bigidea">Momentum simulates a particle pushed by the force <b>−∇J(θ)</b> and slowed by <b>viscous drag −v</b>, using Euler steps. Viscous drag is “just right”: turbulent drag never stops the ball, dry friction stops it too early.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mathbf f(t)=\frac{\partial^2}{\partial t^2}\boldsymbol\theta(t) \]
+        \[ \Longleftrightarrow\quad\mathbf v(t)=\frac{\partial}{\partial t}\boldsymbol\theta(t),\quad\mathbf f(t)=\frac{\partial}{\partial t}\mathbf v(t) \]<span class="eqno">(8.18–8.20)</span>
+        \[ \mathbf f(t)=-\nabla_{\boldsymbol\theta}J(\boldsymbol\theta)-c\,\mathbf v(t) \]
+        \[ \xrightarrow{\text{Euler step }\Delta}\quad\mathbf v\leftarrow(1-c\Delta)\mathbf v-\Delta\nabla J,\quad\boldsymbol\theta\leftarrow\boldsymbol\theta+\Delta\mathbf v \]</div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Newton’s second-order equation is turned into two first-order ones (position and velocity) and solved by <b>Euler’s method</b>: small finite steps in the direction of each derivative → the momentum update.</li>
+          <li>Force 1: \(-\nabla J\) pushes downhill. The ball gathers speed on steep parts and keeps sliding until it starts going uphill.</li>
+          <li>Force 2: \(-\mathbf v\), <b>viscous drag</b> (like syrup), so the ball loses energy and settles in a minimum. Mathematically convenient (integer power 1).</li>
+          <li><b>Turbulent drag</b> (∝ v², air) is too weak at low speed: the ball never comes to rest. <b>Dry friction</b> (constant, ground) is too strong: it can stop the ball where the gradient is small but non-zero, before the minimum.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Euler’s method</dt><dd>Simulate a differential equation by small steps: new = old + Δ × derivative.</dd>
+        <dt>Viscous drag</dt><dd>Friction proportional to speed.</dd>
+        <dt>Turbulent drag</dt><dd>Friction proportional to speed².</dd>
+        <dt>Dry friction</dt><dd>Constant-size friction opposing motion.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Euler with drag c and time step Δ: \(\mathbf v\leftarrow(1-c\Delta)\mathbf v-\Delta\nabla J\).</li>
+        <li>Match with momentum: α = 1 − cΔ and ε = Δ (absorbing the extra Δ in θ ← θ + Δv into the scale of v).</li>
+        <li>α = 0.9 ⇒ cΔ = 0.1: each step the syrup removes 10% of the speed.</li>
+        <li>Dry friction c = 0.5 in the bowl J = ½θ²: the ball stops anywhere with |∇J| = |θ| ≤ 0.5 — up to 0.5 away from the minimum.</li>
+      </ol></div>
+    </div>
+    <div data-widget="dragDemo"></div>
+  </div>
+</section>
+
+<section class="slide" id="s-nesterov" data-part="Part 1 · Update rules (8.3, 8.5)" data-title="Nesterov momentum" data-stages="update">
+  <div class="slide-head"><span class="kicker">8.3.3 · Nesterov momentum</span><h2>Nesterov momentum: look ahead, then correct</h2><div class="stages"></div></div>
+  <p class="bigidea">Same as momentum, but the gradient is evaluated <b>after</b> applying the current velocity — at θ + αv. It acts like a correction factor that brakes earlier when the velocity is about to overshoot.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mathbf v\leftarrow\alpha\mathbf v-\epsilon\nabla_{\boldsymbol\theta}\Big[\frac1m\sum_{i=1}^{m}L\big(f(\mathbf x^{(i)};\boldsymbol\theta+\alpha\mathbf v),\mathbf y^{(i)}\big)\Big] \]
+        \[ \boldsymbol\theta\leftarrow\boldsymbol\theta+\mathbf v \]<span class="eqno">(8.21–8.22)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>α and ε play the same roles as in standard momentum.</li>
+          <li>Standard momentum: gradient at where you <b>are</b>. Nesterov: gradient at where the velocity is <b>about to take you</b>.</li>
+          <li>Convex <b>batch</b> case: the excess error improves from \(O(1/k)\) to \(O(1/k^2)\) after k steps.</li>
+          <li><b>Stochastic</b> case: no improvement in the convergence rate.</li>
+          <li>Practical note (from the maths of a quadratic): because it reacts to the look-ahead gradient, Nesterov tolerates a slightly smaller maximum ε in very steep directions than standard momentum — that is why the demo uses ε = 0.08.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Look-ahead point</dt><dd>θ + αv: where momentum alone would take the parameters.</dd>
+        <dt>O(1/k²)</dt><dd>Error shrinks like 1/k²: 10× more steps → 100× less error.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>J = ½θ², θ = 2, v = −0.5, α = 0.9, ε = 0.1.</li>
+        <li>Standard: g = J′(2) = 2 → \(v=0.9(-0.5)-0.1(2)=-0.65\), θ = 1.35.</li>
+        <li>Nesterov: look ahead to 2 + 0.9(−0.5) = 1.55, g = 1.55 → \(v=-0.45-0.155=-0.605\), θ = 1.395.</li>
+        <li>Near the minimum the look-ahead gradient is smaller (or already reversed), so Nesterov brakes earlier and overshoots less.</li>
+      </ol></div>
+    </div>
+    <div data-widget="playground" data-preset="nest" data-title="Momentum vs. Nesterov momentum" data-sub="Same ε = 0.08 and α = 0.8 for both. Turn on plain gradient descent to compare, and raise α to 0.95 to see who overshoots less."></div>
+  </div>
+</section>
+
+<section class="slide" id="s-adaptive" data-part="Part 1 · Update rules (8.3, 8.5)" data-title="Adaptive learning rates" data-stages="update">
+  <div class="slide-head"><span class="kicker">8.5 · Algorithms with adaptive learning rates</span><h2>One learning rate per parameter</h2><div class="stages"></div></div>
+  <p class="bigidea">If the directions of sensitivity are roughly <b>axis-aligned</b>, give every parameter its <b>own</b> learning rate and adapt it automatically from the history of its gradients.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Momentum eases the difficulty of choosing ε, but adds another hyper-parameter. Another idea: <b>per-parameter</b> step sizes.</li>
+          <li>A parameter with consistently large gradients probably sits in a steep direction → smaller steps. One with tiny gradients is in a gentle direction → larger steps.</li>
+          <li>Works best when the important directions line up with the parameter axes (each weight more or less on its own scale). Compare the “axis-aligned valley” and the rotated “stretched bowl” in the demo.</li>
+          <li>Next slides: <b>AdaGrad</b> (sum of all past squared gradients), <b>RMSProp</b> (decaying average), <b>Adam</b> (RMSProp + momentum + bias correction).</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Adaptive learning rate</dt><dd>A step size that changes automatically during training.</dd>
+        <dt>Axis-aligned</dt><dd>The valley’s long and short directions match the parameter axes.</dd>
+        <dt>⊙</dt><dd>Element-wise product (each parameter separately).</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Loss \(\frac12(0.1x^2+10y^2)\): gradients (0.1x, 10y). Plain GD must use ε &lt; 2/10 = 0.2 → along x each step shrinks error only by \(1-0.2\cdot0.1=0.98\).</li>
+        <li>An adaptive method divides each gradient by its typical size: steps ≈ ε·sign(g) in both coordinates → both directions progress at a similar rate.</li>
+      </ol></div>
+    </div>
+    <div data-widget="playground" data-preset="adapt" data-title="Gradient descent vs. adaptive methods" data-sub="Start on the axis-aligned valley, then switch to the rotated bowl, where the per-axis assumption is weaker."></div>
+  </div>
+</section>
+
+<section class="slide" id="s-adagrad" data-part="Part 1 · Update rules (8.3, 8.5)" data-title="AdaGrad" data-stages="update">
+  <div class="slide-head"><span class="kicker">8.5.1 · AdaGrad</span><h2>AdaGrad: scale by the whole gradient history</h2><div class="stages"></div></div>
+  <p class="bigidea">Divide each parameter’s step by the <b>square root of the sum of all its past squared gradients</b>. Steep parameters slow down quickly, gentle ones keep moving — but the learning rate <b>can only shrink</b>, sometimes too early.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mathbf g\leftarrow\frac1m\nabla_{\boldsymbol\theta}\sum_iL\big(f(\mathbf x^{(i)};\boldsymbol\theta),\mathbf y^{(i)}\big),\qquad\mathbf r\leftarrow\mathbf r+\mathbf g\odot\mathbf g \]
+        \[ \Delta\boldsymbol\theta\leftarrow-\frac{\epsilon}{\delta+\sqrt{\mathbf r}}\odot\mathbf g,\qquad\boldsymbol\theta\leftarrow\boldsymbol\theta+\Delta\boldsymbol\theta\qquad(\delta\approx10^{-7}) \]<span class="eqno">Algorithm 8.4</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Learning rates scale inversely with \(\sqrt{\sum\text{past }g^2}\) (element-wise). Large partial derivatives → rapidly decreasing rate; small → slowly decreasing.</li>
+          <li>Net effect: more progress in gently sloped directions.</li>
+          <li>Convex optimization: nice theory, converges fast.</li>
+          <li>Deep nets: accumulating squared gradients from the very start can cause a <b>premature and excessive</b> decrease of the effective rate — too small before reaching a locally convex bowl. Works for some models, not all.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>r</dt><dd>Accumulated squared gradients (one number per parameter).</dd>
+        <dt>δ</dt><dd>Tiny constant that avoids division by zero.</dd>
+        <dt>Effective learning rate</dt><dd>\(\epsilon/(\delta+\sqrt r)\) for each parameter.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>ε = 0.1. Step 1: g = 3 → r = 9 → \(\Delta\theta=-0.1\cdot3/3=-0.1\).</li>
+        <li>Step 2: g = 4 → r = 9 + 16 = 25 → \(\Delta\theta=-0.1\cdot4/5=-0.08\).</li>
+        <li>Step 3: g = 0.2 (now in a gentle region) → r = 25.04 → \(\Delta\theta=-0.1\cdot0.2/5.004=-0.004\): the early big gradients still slow it down.</li>
+      </ol></div>
+    </div>
+    <div data-widget="adagradDecay"></div>
+  </div>
+</section>
+
+<section class="slide" id="s-rmsprop" data-part="Part 1 · Update rules (8.3, 8.5)" data-title="RMSProp" data-stages="update">
+  <div class="slide-head"><span class="kicker">8.5.2 · RMSProp</span><h2>RMSProp: forget the distant past</h2><div class="stages"></div></div>
+  <p class="bigidea">Replace AdaGrad’s sum with an <b>exponentially decaying average</b> of squared gradients. After arriving in a convex bowl, RMSProp behaves like AdaGrad <b>started inside that bowl</b>.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mathbf r\leftarrow\rho\,\mathbf r+(1-\rho)\,\mathbf g\odot\mathbf g \]
+        \[ \Delta\boldsymbol\theta=-\frac{\epsilon}{\sqrt{\delta+\mathbf r}}\odot\mathbf g,\qquad\boldsymbol\theta\leftarrow\boldsymbol\theta+\Delta\boldsymbol\theta\qquad(\delta\approx10^{-6}) \]<span class="eqno">Algorithm 8.5</span>
+        \[ \text{+ Nesterov: }\ \tilde{\boldsymbol\theta}\leftarrow\boldsymbol\theta+\alpha\mathbf v,\ \ \mathbf g=\nabla J(\tilde{\boldsymbol\theta}),\ \ \mathbf r\leftarrow\rho\mathbf r+(1-\rho)\mathbf g\odot\mathbf g \]
+        \[ \mathbf v\leftarrow\alpha\mathbf v-\frac{\epsilon}{\sqrt{\mathbf r}}\odot\mathbf g,\qquad\boldsymbol\theta\leftarrow\boldsymbol\theta+\mathbf v \]<span class="eqno">Algorithm 8.6</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Performs better than AdaGrad in the <b>non-convex</b> setting.</li>
+          <li>The decaying average discards history from the extreme past, so it can converge rapidly after finding a convex bowl.</li>
+          <li>New hyper-parameter ρ controls the length scale of the average (≈ 1/(1 − ρ) steps).</li>
+          <li>Empirically an effective, practical optimizer for deep networks; can be combined with (Nesterov) momentum.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>ρ</dt><dd>Decay rate of the moving average (e.g. 0.9).</dd>
+        <dt>RMS</dt><dd>Root mean square: \(\sqrt{\text{average of }g^2}\) — the typical gradient size.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>ρ = 0.9, ε = 0.1, r₀ = 0. Step 1: g = 3 → r = 0.1·9 = 0.9 → \(\Delta\theta=-0.1\cdot3/\sqrt{0.9}=-0.316\).</li>
+        <li>Step 2: g = 4 → r = 0.9·0.9 + 0.1·16 = 2.41 → \(\Delta\theta=-0.1\cdot4/1.552=-0.258\).</li>
+        <li>After ~30 steps of g = 0.2, r ≈ 0.04 + leftover → step ≈ 0.1 · 0.2/0.2 = 0.1: full speed again (AdaGrad would be at 0.004).</li>
+      </ol></div>
+    </div>
+    <div data-widget="playground" data-preset="rms" data-title="AdaGrad vs. RMSProp on a curvy valley" data-sub="On the non-convex banana valley, AdaGrad’s step size decays and it slows down; RMSProp keeps moving. Turn on Adam too."></div>
+  </div>
+</section>
+
+<section class="slide" id="s-adam" data-part="Part 1 · Update rules (8.3, 8.5)" data-title="Adam" data-stages="update">
+  <div class="slide-head"><span class="kicker">8.5.3 · Adam</span><h2>Adam: adaptive moments</h2><div class="stages"></div></div>
+  <p class="bigidea">Adam ≈ <b>RMSProp + momentum</b>, with two differences: momentum is an estimate of the gradient’s <b>first moment</b>, and both moment estimates get a <b>bias correction</b> because they start at zero.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ t\leftarrow t+1,\quad\mathbf s\leftarrow\rho_1\mathbf s+(1-\rho_1)\mathbf g,\quad\mathbf r\leftarrow\rho_2\mathbf r+(1-\rho_2)\mathbf g\odot\mathbf g \]
+        \[ \hat{\mathbf s}\leftarrow\frac{\mathbf s}{1-\rho_1^t},\quad\hat{\mathbf r}\leftarrow\frac{\mathbf r}{1-\rho_2^t},\quad\Delta\boldsymbol\theta=-\epsilon\frac{\hat{\mathbf s}}{\sqrt{\hat{\mathbf r}}+\delta},\quad\boldsymbol\theta\leftarrow\boldsymbol\theta+\Delta\boldsymbol\theta \]<span class="eqno">Algorithm 8.7 (defaults ε = 0.001, ρ₁ = 0.9, ρ₂ = 0.999, δ = 10⁻⁸)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>“Adam” = <b>adaptive moments</b>. s estimates the mean of g (first moment); r the uncentered variance (second moment).</li>
+          <li>The straightforward alternative — momentum applied to RMSProp’s rescaled gradients — has no clear theoretical motivation; Adam builds momentum into the moment estimate.</li>
+          <li><b>Bias correction</b>: s and r start at 0, so early averages are pulled toward 0. RMSProp lacks this correction and its second-moment estimate can be badly biased early on.</li>
+          <li>Generally robust to hyper-parameter choices, though ε sometimes needs changing from the default.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>First moment</dt><dd>Average of g (the direction of travel).</dd>
+        <dt>Second moment</dt><dd>Average of g² (the typical size of g).</dd>
+        <dt>Bias correction</dt><dd>Dividing by 1 − ρᵗ undoes the pull toward the zero initial value.</dd>
+        <dt>ρ₁, ρ₂</dt><dd>Decay rates of the two moving averages (also written β₁, β₂).</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>First step, g = 2: s = 0.1·2 = 0.2; r = 0.001·4 = 0.004.</li>
+        <li>Corrected: ŝ = 0.2/(1 − 0.9) = 2; r̂ = 0.004/(1 − 0.999) = 4.</li>
+        <li>Step: \(-\epsilon\cdot2/(\sqrt4+10^{-8})=-\epsilon\) — a step of size ε regardless of the gradient’s scale.</li>
+        <li>Without correction: \(0.2/\sqrt{0.004}=3.16\) → the first step would be 3.16ε.</li>
+      </ol></div>
+    </div>
+    <div data-widget="adamBias"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch05-4.html#/s-bias">Biased vs. unbiased estimators (L2)</a> and <a href="ch08-6.html#/s-polyak">exponential moving averages (L9)</a>.</span></li>
+    <li><span class="tag same">Compare</span><span><a href="ch08-6.html#/s-bfgs">BFGS (L9)</a>: learns a full curvature matrix; Adam learns only a cheap diagonal scale.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-choose" data-part="Part 1 · Update rules (8.3, 8.5)" data-title="Choosing an optimizer" data-stages="update">
+  <div class="slide-head"><span class="kicker">8.5.4 · Choosing the right optimization algorithm</span><h2>Which optimizer should you use?</h2><div class="stages"></div></div>
+  <p class="bigidea">There is <b>no consensus</b>. SGD, SGD + momentum, RMSProp (± momentum), AdaDelta and Adam are all popular; the choice depends largely on <b>how familiar you are</b> with tuning each one.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card" style="padding:0;overflow:hidden"><div class="scroll-x"><table class="data-table">
+        <thead><tr><th>Method</th><th>Extra memory</th><th>Hyper-parameters</th><th>Strength</th></tr></thead>
+        <tbody>
+          <tr><td>SGD</td><td>none</td><td>ε (schedule)</td><td>simple, generalizes well</td></tr>
+          <tr><td>Momentum</td><td>v</td><td>ε, α</td><td>fast along consistent directions</td></tr>
+          <tr><td>Nesterov</td><td>v</td><td>ε, α</td><td>less overshoot (batch theory)</td></tr>
+          <tr><td>AdaGrad</td><td>r</td><td>ε, δ</td><td>convex problems, sparse gradients</td></tr>
+          <tr><td>RMSProp</td><td>r</td><td>ε, ρ, δ</td><td>non-convex, practical</td></tr>
+          <tr><td>Adam</td><td>s, r</td><td>ε, ρ₁, ρ₂, δ</td><td>robust defaults</td></tr>
+        </tbody>
+      </table></div></div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>AdaDelta</dt><dd>A relative of RMSProp that also adapts the overall step size.</dd>
+        <dt>Hyper-parameter tuning</dt><dd>Searching ε, α, ρ… on validation performance.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Memory for a 100-million-parameter model in float32: weights 400 MB.</li>
+        <li>Momentum adds v (+400 MB); Adam adds s and r (+800 MB) — still O(k), unlike BFGS’s k² (L9).</li>
+      </ol></div>
+    </div>
+    <div data-widget="playground" data-preset="race" data-title="Optimizer race" data-sub="Pick a surface, turn methods on/off, tune their step sizes. No single method wins everywhere."></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-init" data-part="Part 2 · Initialization (8.4)" data-title="Initialization: breaking symmetry" data-stages="init">
+  <div class="slide-head"><span class="kicker">8.4 · Parameter initialization strategies</span><h2>Why initialization matters, and breaking symmetry</h2><div class="stages"></div></div>
+  <p class="bigidea">The starting point decides whether training <b>converges at all</b>, how <b>fast</b>, to <b>what cost</b> — and even how well it <b>generalizes</b>. The one certainty: initial parameters must <b>break symmetry</b> between units.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Some starting points are so unstable that training fails numerically. Points of similar cost can have very different generalization error.</li>
+          <li>Modern strategies are <b>simple heuristics</b>: we don’t know which nice initial properties survive once learning begins, and good-for-optimization may be bad-for-generalization.</li>
+          <li><b>Symmetry</b>: two hidden units with the same activation, the same inputs and the same initial parameters get the same updates forever (deterministic algorithm) → redundant.</li>
+          <li>Best: each unit computes a different function, so no input pattern is lost in the null space of forward propagation and no gradient pattern in the null space of back-propagation.</li>
+          <li>Random initialization from a <b>high-entropy</b> distribution in high dimensions is cheap and almost never makes two units identical (explicit orthogonalization, e.g. Gram–Schmidt, costs more).</li>
+          <li>Typically: biases = chosen constants; weights = random Gaussian or uniform (which one hardly matters; the <b>scale</b> matters a lot).</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Symmetry breaking</dt><dd>Making units start different so they learn different features.</dd>
+        <dt>High-entropy distribution</dt><dd>Very spread out / unpredictable (e.g. a broad Gaussian).</dd>
+        <dt>Null space</dt><dd>Input directions a layer maps to zero (information lost).</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Two units with weights (0.5, 0.5) and the same input x = (1, 0): both compute tanh(0.5) = 0.462.</li>
+        <li>Output weights equal too ⇒ both receive gradient δ·w·(1 − 0.462²) — identical.</li>
+        <li>After the update they are still equal; by induction, forever. Random init (e.g. (0.3, −0.7) vs (−0.2, 0.9)) breaks this from step 0.</li>
+      </ol></div>
+    </div>
+    <div data-widget="symmetryBreak"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch06-1.html#/s-gbl">Sensitivity to initialization (L4)</a> and <a href="ch08-1.html#/s-local-minima">weight-space symmetry (L7)</a>.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch08-6.html#/s-pretrain">Initialization by pretraining (L9)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-init-scale" data-part="Part 2 · Initialization (8.4)" data-title="Choosing the weight scale" data-stages="init,forward,backward">
+  <div class="slide-head"><span class="kicker">8.4 · The scale of the initial weights</span><h2>How large should the initial weights be?</h2><div class="stages"></div></div>
+  <p class="bigidea">Too small → signals and gradients <b>vanish</b> through many layers. Too large → they <b>explode</b>, units <b>saturate</b>, RNNs become <b>chaotic</b>. Choose the scale so each layer roughly <b>preserves the variance</b> of the signal.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ W_{i,j}\sim U\Big(-\frac{1}{\sqrt m},\frac{1}{\sqrt m}\Big) \]<span class="eqno">(8.23) simple rule</span>
+        \[ W_{i,j}\sim U\Big(-\sqrt{\frac{6}{m+n}},\sqrt{\frac{6}{m+n}}\Big) \]<span class="eqno">(8.24) normalized init — m inputs, n outputs</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Larger weights: stronger symmetry breaking, less signal loss through linear parts — but risk exploding values (partly fixable by gradient clipping), saturation and chaos.</li>
+          <li><b>Optimization view</b>: weights large enough to propagate information. <b>Regularization view</b>: smaller is better; SGD that stays near its start acts like a prior that final θ is near initial θ.</li>
+          <li>The normalized rule compromises between equal <b>activation</b> variance and equal <b>gradient</b> variance across layers.</li>
+          <li><b>Random orthogonal</b> matrices with a carefully chosen <b>gain</b> for the non-linearity; later, just setting the gain right trained networks <b>1 000 layers</b> deep. Insight: activations/gradients do a random walk across layers; tuned to preserve norms, they neither vanish nor explode.</li>
+          <li>In practice the best scale is near — not exactly at — the theory: maybe norm preservation isn’t the right criterion; initial properties fade during learning; faster optimization can hurt generalization.</li>
+          <li>\(1/\sqrt m\) rules make every weight tiny in wide layers. <b>Sparse initialization</b>: each unit gets exactly k non-zero weights → total input independent of m, more diversity — but a strong prior that is slow to undo (bad for maxout).</li>
+          <li>Treat the per-layer scale as a hyper-parameter, or look at the std of activations/gradients on a single minibatch (cheap, automatable).</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Fan-in m / fan-out n</dt><dd>Number of inputs / outputs of a layer.</dd>
+        <dt>Gain</dt><dd>Extra multiplier on the init scale chosen for the non-linearity.</dd>
+        <dt>Orthogonal matrix</dt><dd>Preserves vector lengths exactly (QᵀQ = I).</dd>
+        <dt>Chaos</dt><dd>Extreme sensitivity to tiny input changes, so the forward pass looks random.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Layer with m = 256 inputs, n = 128 outputs. Rule 1: \(U(\pm1/16)=U(\pm0.0625)\).</li>
+        <li>Normalized: \(\sqrt{6/384}=0.125\) → \(U(\pm0.125)\); variance of U(±a) is a²/3 = 0.0052.</li>
+        <li>Signal factor per layer ≈ m·Var(w): rule 1 gives \(256\times0.0625^2/3=0.33\) (shrinks 3× per linear layer!); normalized with m = n gives exactly 1.</li>
+        <li>After 20 layers: \(0.33^{20}\approx10^{-10}\) vs \(1^{20}=1\).</li>
+      </ol></div>
+    </div>
+    <div data-widget="initScale"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch08-1.html#/s-longterm">Vanishing/exploding products (L7)</a> and <a href="ch06-1.html#/s-hidden">ReLU (L4)</a>.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch08-6.html#/s-bn-how">Batch normalization (L9)</a>: keeps activations normalized during the whole of training, not just at the start.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-init-bias" data-part="Part 2 · Initialization (8.4)" data-title="Initializing biases & other parameters" data-stages="init">
+  <div class="slide-head"><span class="kicker">8.4 · Biases and other parameters</span><h2>Initializing biases (and everything else)</h2><div class="stages"></div></div>
+  <p class="bigidea">Zero biases are usually fine. Exceptions: <b>output biases</b> that match the data’s marginal statistics, <b>small positive</b> ReLU biases, and <b>gate</b> biases that start “open”. Parameters can also be initialized by <b>learning</b> (pretraining).</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \text{softmax}(\mathbf b)=\mathbf c\ \Rightarrow\ b_i=\log c_i\ (+\text{const}) \]
+        \[ p(y\mid\mathbf x)=\mathcal N\big(y\mid\mathbf w^{\top}\mathbf x+b,\ 1/\beta\big),\qquad\beta_0=1 \]</div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ol class="steps">
+          <li><b>Output units</b>: with small initial weights the output is set by the bias, so set the bias to the inverse activation of the marginal statistics of the targets (e.g. class frequencies). Same for autoencoders / Boltzmann machines whose outputs should match the input distribution.</li>
+          <li><b>Avoid saturation</b>: ReLU hidden bias 0.1 instead of 0. Not compatible with schemes that don’t expect strong bias input (e.g. random-walk init).</li>
+          <li><b>Gates</b>: when a unit u ∈ [0, 1] multiplies another unit h (output uh), start with u ≈ 1 so h can learn — e.g. LSTM forget-gate bias = 1.</li>
+        </ol>
+        <p>Variance/precision parameters can safely start at 1. Beyond constants and random values: initialize from an <b>unsupervised</b> model on the same inputs, or from <b>supervised training on a related (even unrelated) task</b>. Some of these help by encoding information about the data; others just set the right scale and make units different.</p>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Marginal statistics</dt><dd>Overall averages of the targets, e.g. how often each class occurs.</dd>
+        <dt>Gate</dt><dd>A unit in [0, 1] that multiplies another unit, letting it pass or blocking it.</dd>
+        <dt>Precision β</dt><dd>1 / variance of a Gaussian output.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Class frequencies c = (0.90, 0.09, 0.01) → b = log c = (−0.105, −2.408, −4.605).</li>
+        <li>Initial loss with b = 0: \(\log3=1.099\). With b = log c: \(H(\mathbf c)=0.90(0.105)+0.09(2.408)+0.01(4.605)=0.358\).</li>
+        <li>LSTM forget gate: σ(0) = 0.5 → after 20 steps 0.5²⁰ ≈ 10⁻⁶ of the memory survives; σ(1) = 0.731 → 0.731²⁰ ≈ 0.002.</li>
+      </ol></div>
+    </div>
+    <div data-widget="outputBiasInit"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag fwd">Leads to</span><span><a href="ch10.html#/s-lstm">LSTM gates (L11)</a> and <a href="ch08-6.html#/s-pretrain-variants">transfer learning (L9)</a>.</span></li>
+    <li><span class="tag back">Builds on</span><span><a href="ch06-1.html#/s-softmax">Softmax (L4)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-summary" data-part="Wrap-up" data-title="Summary: how it all connects" data-stages="init,batch,update">
+  <div class="slide-head"><span class="kicker">Wrap-up</span><h2>Summary: how it all connects</h2><div class="stages"></div></div>
+  <p class="bigidea">Decay ε for noise; add <b>momentum</b> for speed and stability; use <b>per-parameter</b> rates (RMSProp, Adam) for badly scaled problems; and <b>initialize</b> with random, variance-preserving weights and sensible biases.</p>
+  <div class="card" style="padding:0;overflow:hidden"><div class="scroll-x"><table class="data-table">
+    <thead><tr><th>Method</th><th>Update</th><th>Fixes (from L7)</th></tr></thead>
+    <tbody>
+      <tr><td>SGD + schedule</td><td>\(\boldsymbol\theta\leftarrow\boldsymbol\theta-\epsilon_k\hat{\mathbf g}\), ε_k ↓</td><td>minibatch noise</td></tr>
+      <tr><td>Momentum</td><td>\(\mathbf v\leftarrow\alpha\mathbf v-\epsilon\mathbf g,\ \boldsymbol\theta\leftarrow\boldsymbol\theta+\mathbf v\)</td><td>ill-conditioning, noise</td></tr>
+      <tr><td>Nesterov</td><td>gradient at θ + αv</td><td>overshooting</td></tr>
+      <tr><td>AdaGrad</td><td>\(-\epsilon\,\mathbf g/(\delta+\sqrt{\sum\mathbf g^2})\)</td><td>badly scaled axes (convex)</td></tr>
+      <tr><td>RMSProp</td><td>\(-\epsilon\,\mathbf g/\sqrt{\delta+\text{EMA}(\mathbf g^2)}\)</td><td>badly scaled axes (non-convex)</td></tr>
+      <tr><td>Adam</td><td>\(-\epsilon\,\hat{\mathbf s}/(\sqrt{\hat{\mathbf r}}+\delta)\)</td><td>all of the above, robust defaults</td></tr>
+      <tr><td>Initialization</td><td>random, Var(w) ≈ 1/m … 2/m; biases 0 / log c / 0.1 / 1</td><td>symmetry, vanishing/exploding signals</td></tr>
+    </tbody>
+  </table></div></div>
+  <div class="row3" style="margin-top:16px">
+    <div class="card plain"><h3><span class="dot"></span>Remember</h3><p>All of these are first-order and O(k) memory — that is why they scale to huge networks.</p></div>
+    <div class="card plain"><h3><span class="dot"></span>Next lecture</h3><p><a href="ch08-6.html">Optimization III</a>: second-order ideas, batch norm, Polyak averaging, pretraining, curriculum learning.</p></div>
+    <div class="card fit"><h3><span class="dot"></span>Check yourself</h3><p>Twelve quiz questions with explanations.</p><button class="btn primary" type="button" data-goto="s-quiz" style="margin-top:6px">Take the quiz →</button></div>
+  </div>
+</section>
+
+<section class="slide" id="s-quiz" data-part="Wrap-up" data-title="Check yourself (quiz)">
+  <div class="slide-head"><span class="kicker">Wrap-up</span><h2>Check yourself</h2><p class="lede">Pick an answer to see whether it is right and why.</p></div>
+  <div data-widget="quiz"></div>
+  <footer class="credits">Study notes for Deep Learning, chapter 8.3–8.5. Equation and algorithm numbers follow Goodfellow, Bengio &amp; Courville, <em>Deep Learning</em> (MIT Press, 2016). Explanations, diagrams and demos are original.</footer>
+</section>
+
+</main>
+</body>
+</html>
