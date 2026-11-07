@@ -1,0 +1,522 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Regularization</title>
+<meta name="description" content="Interactive notes for Deep Learning chapter 7: parameter norm penalties, L2 weight decay, L1 sparsity, dataset augmentation, noise robustness, label smoothing, early stopping, bagging and ensembles, dropout.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232a78d6'/%3E%3Cpath d='M6 9c5 0 6 14 10 14s5-14 10-14' fill='none' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<link rel="stylesheet" href="../css/style.css?v=10">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script defer src="../js/core.js?v=10"></script>
+<script defer src="../js/course.js?v=10"></script>
+<script defer src="../js/quiz.js?v=10"></script>
+<script defer src="../js/lectures/ch07.js?v=10"></script>
+</head>
+<body data-page="lecture" data-lecture="ch07">
+<script>
+window.TOPICS = {
+  data: [['s-augment', 'Dataset augmentation'], ['s-label-smoothing', 'Soft (smoothed) targets']],
+  init: [['s-bagging', 'Ensembles: several models / inits']],
+  batch: [['s-augment', 'Transform examples on the fly'], ['s-dropout', 'A new dropout mask per example']],
+  forward: [['s-dropout', 'Dropout removes random units'], ['s-noise', 'Noise on inputs, hidden units, weights']],
+  loss: [['s-norm-penalty', 'Penalty αΩ(θ)'], ['s-l2', 'L2 / weight decay'], ['s-l1', 'L1 / sparsity'], ['s-label-smoothing', 'Label smoothing']],
+  backward: [['s-dropout-more', 'Masks also gate the backward pass']],
+  update: [['s-l2', 'Weight decay shrinks w every step'], ['s-early-l2', 'Early stopping ≈ L2']],
+  final: [['s-early-stop', 'Early stopping on the validation set'], ['s-bagging', 'Model averaging'], ['s-dropout-more', 'Weight-scaling inference']]
+};
+</script>
+
+<main class="deck" id="deck">
+
+<section class="slide" id="s-title" data-part="Start here" data-title="Welcome: regularization">
+  <div class="slide-head">
+    <span class="kicker">Lecture 6 · Chapter 7</span>
+    <h1>Regularization</h1>
+    <p class="lede">Deep networks have enormous capacity, so they can memorize their training data. <b>Regularization</b> is the toolbox for making them work on <b>new</b> data: penalties on the weights (L2, L1), more and noisier data (augmentation, noise, label smoothing), stopping at the right time (early stopping), and averaging many models (bagging, <b>dropout</b>).</p>
+  </div>
+  <div class="road">
+    <div class="card big"><span class="kicker">Part 1 · 7.1 – 7.5</span><h4>Penalties &amp; data</h4><ol><li>Norm penalties: L2 and L1</li><li>Dataset augmentation</li><li>Noise robustness</li><li>Label smoothing</li></ol><button class="btn primary go" type="button" data-goto="s-reg-what">Start →</button></div>
+    <div class="card big"><span class="kicker">Part 2 · 7.8 – 7.12</span><h4>Time &amp; ensembles</h4><ol><li>Early stopping (and why it ≈ L2)</li><li>Bagging and ensembles</li><li>Dropout and weight-scaling inference</li></ol><button class="btn primary go" type="button" data-goto="s-early-stop">Jump to Part 2 →</button></div>
+  </div>
+</section>
+
+<section class="slide" id="s-loop" data-part="Start here" data-title="Where this lecture fits" data-stages="data,batch,forward,loss,update,final">
+  <div class="slide-head"><span class="kicker">Start here</span><h2>Where this lecture fits in training</h2><div class="stages"></div></div>
+  <p class="bigidea">Regularization touches <b>almost every step</b> of the loop: the data (augmentation), the minibatch (masks), the forward pass (dropout, noise), the loss (penalties, soft targets), the update (weight decay) and the evaluation (early stopping, averaging).</p>
+  <div class="stack"><div data-widget="loop"></div>
+    <div class="row3">
+      <div class="card plain"><h3><span class="dot"></span>Change the objective</h3><p>Add αΩ(θ): L2 keeps weights small, L1 makes them sparse.</p></div>
+      <div class="card plain"><h3><span class="dot"></span>Change the data</h3><p>Augment, add noise, soften labels — teach invariances and robustness.</p></div>
+      <div class="card plain"><h3><span class="dot"></span>Change training &amp; prediction</h3><p>Stop early; average many (sub-)models with bagging and dropout.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-reg-what" data-part="Part 1 · Penalties & data (7.1–7.5)" data-title="What regularization is" data-stages="loss,final">
+  <div class="slide-head"><span class="kicker">7 · Regularization</span><h2>Regularization: trade a little training error for test error</h2><div class="stages"></div></div>
+  <p class="bigidea">Regularization = any change to the learning algorithm meant to reduce <b>generalization</b> error, not training error. In practice the best model is almost always a <b>large</b> model that has been <b>regularized appropriately</b>.</p>
+  <div class="row2">
+    <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+      <ul>
+        <li>Many strategies are explicitly designed to reduce test error, possibly at the cost of higher training error — collectively, <b>regularization</b>.</li>
+        <li>Recall the bias–variance view: a good regularizer trades a small increase in <b>bias</b> for a large reduction in <b>variance</b>.</li>
+        <li>Rather than searching for a model of exactly the right size, take a big network and control its <b>effective capacity</b>.</li>
+      </ul>
+    </div>
+    <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+      <li>Unregularized big network: training error 0.02, test error 0.30 (gap 0.28 → overfitting).</li>
+      <li>Same network with dropout + weight decay: training error 0.05, test error 0.18.</li>
+      <li>Training error went <b>up</b> by 0.03, test error went <b>down</b> by 0.12 — that is what “regularization” means.</li>
+    </ol></div>
+  </div>
+  <div class="card" style="margin-top:16px;padding:0;overflow:hidden"><div class="scroll-x"><table class="data-table">
+    <thead><tr><th>Technique</th><th>What it changes</th><th>Main effect</th><th>Slide</th></tr></thead>
+    <tbody>
+      <tr><td>L2 weight decay</td><td>loss + ½α‖w‖²</td><td>shrinks weights, mostly in unimportant directions</td><td><button class="btn" type="button" data-goto="s-l2">Go</button></td></tr>
+      <tr><td>L1</td><td>loss + α‖w‖₁</td><td>sets many weights exactly to 0</td><td><button class="btn" type="button" data-goto="s-l1">Go</button></td></tr>
+      <tr><td>Augmentation</td><td>training data</td><td>invariance to transformations</td><td><button class="btn" type="button" data-goto="s-augment">Go</button></td></tr>
+      <tr><td>Noise</td><td>inputs / weights</td><td>robustness, flat minima</td><td><button class="btn" type="button" data-goto="s-noise">Go</button></td></tr>
+      <tr><td>Label smoothing</td><td>targets</td><td>no pursuit of 0/1 probabilities</td><td><button class="btn" type="button" data-goto="s-label-smoothing">Go</button></td></tr>
+      <tr><td>Early stopping</td><td>training time</td><td>≈ L2, chosen automatically</td><td><button class="btn" type="button" data-goto="s-early-stop">Go</button></td></tr>
+      <tr><td>Bagging / ensembles</td><td>several models</td><td>averaging reduces variance</td><td><button class="btn" type="button" data-goto="s-bagging">Go</button></td></tr>
+      <tr><td>Dropout</td><td>random sub-networks</td><td>cheap exponential ensemble</td><td><button class="btn" type="button" data-goto="s-dropout">Go</button></td></tr>
+    </tbody>
+  </table></div></div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch05-1.html#/s-regularization">Definition of regularization (L1)</a> and <a href="ch05-4.html#/s-bias-variance">bias–variance trade-off (L2)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-norm-penalty" data-part="Part 1 · Penalties & data (7.1–7.5)" data-title="Parameter norm penalties" data-stages="loss">
+  <div class="slide-head"><span class="kicker">7.1 · Parameter norm penalties</span><h2>Parameter norm penalties</h2><div class="stages"></div></div>
+  <p class="bigidea">Add a penalty Ω(θ) on the size of the parameters, weighted by a hyper-parameter α ≥ 0. Penalize the <b>weights</b>, not the <b>biases</b>.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \tilde J(\boldsymbol\theta;\mathbf X,\mathbf y)=J(\boldsymbol\theta;\mathbf X,\mathbf y)+\alpha\,\Omega(\boldsymbol\theta),\qquad\alpha\in[0,\infty) \]<span class="eqno">(7.1)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>α = 0: no regularization; larger α: more regularization. Limits capacity.</li>
+          <li>Penalize only the weights of each layer’s affine transformation, leave biases unregularized:
+            <ul><li>each <b>weight</b> describes how <em>two</em> variables interact → needs data in many conditions to fit;</li>
+            <li>each <b>bias</b> controls a <em>single</em> variable → needs less data, little variance added by leaving it free;</li>
+            <li>regularizing biases can cause significant <b>underfitting</b>.</li></ul></li>
+          <li>Different α per layer is possible, but searching many hyper-parameters is expensive, so often one α for all layers.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>\(\tilde J\)</dt><dd>The regularized objective (what we actually minimize).</dd>
+        <dt>Ω(θ)</dt><dd>Norm penalty measuring the size of the parameters.</dd>
+        <dt>α</dt><dd>Penalty strength (a hyper-parameter tuned on validation data).</dd>
+        <dt>w vs. θ</dt><dd>w = the weights that get penalized; θ = all parameters including biases.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Data loss J = 0.40; weights w = (3, −1); bias b = 7 (not penalized).</li>
+        <li>L2 penalty \(\Omega=\frac12(3^2+(-1)^2)=5\).</li>
+        <li>With α = 0.01: \(\tilde J=0.40+0.01\times5=0.45\). The large bias adds nothing to the penalty.</li>
+      </ol></div>
+    </div>
+    <div data-widget="biasPenalty"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch04-3.html#/s-constrained">KKT & constrained optimization (L3)</a>: a penalty αΩ is the Lagrangian of a constraint Ω(θ) ≤ k.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-l2" data-part="Part 1 · Penalties & data (7.1–7.5)" data-title="L2: weight decay" data-stages="loss,update">
+  <div class="slide-head"><span class="kicker">7.1.1 · L² parameter regularization</span><h2>L2 regularization (weight decay)</h2><div class="stages"></div></div>
+  <p class="bigidea">Each step <b>shrinks the weights by a constant factor</b> before the gradient update. Over the whole training run it shrinks w* along each Hessian eigen-direction by \(\lambda_i/(\lambda_i+\alpha)\) — strongly where the loss doesn’t care, hardly where it does.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \tilde J(\mathbf w)=\frac\alpha2\mathbf w^{\top}\mathbf w+J(\mathbf w),\qquad\nabla_{\mathbf w}\tilde J=\alpha\mathbf w+\nabla_{\mathbf w}J \]<span class="eqno">(7.2–7.3)</span>
+        \[ \mathbf w\leftarrow\mathbf w-\epsilon(\alpha\mathbf w+\nabla_{\mathbf w}J)\quad\Longleftrightarrow\quad\mathbf w\leftarrow(1-\epsilon\alpha)\mathbf w-\epsilon\nabla_{\mathbf w}J \]<span class="eqno">(7.4–7.5)</span>
+        \[ \hat J(\boldsymbol\theta)=J(\mathbf w^*)+\tfrac12(\mathbf w-\mathbf w^*)^{\top}\mathbf H(\mathbf w-\mathbf w^*),\qquad\alpha\tilde{\mathbf w}+\mathbf H(\tilde{\mathbf w}-\mathbf w^*)=0 \]<span class="eqno">(7.6–7.8)</span>
+        \[ \tilde{\mathbf w}=(\mathbf H+\alpha\mathbf I)^{-1}\mathbf H\mathbf w^*=\mathbf Q(\boldsymbol\Lambda+\alpha\mathbf I)^{-1}\boldsymbol\Lambda\mathbf Q^{\top}\mathbf w^* \]<span class="eqno">(7.10–7.13)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Ω = ½‖w‖²₂ drives weights toward the origin. Also called <b>ridge regression</b> or <b>Tikhonov</b> regularization.</li>
+          <li>Approximate J by a quadratic around its unregularized minimum w*: no first-order term (gradient is 0 there), H positive semidefinite.</li>
+          <li>As α → 0, w̃ → w*. As α grows, the component along eigenvector i is multiplied by \(\frac{\lambda_i}{\lambda_i+\alpha}\): if \(\lambda_i\gg\alpha\) almost unchanged; if \(\lambda_i\ll\alpha\) shrunk to nearly 0.</li>
+          <li>Small λᵢ = moving that way barely changes the loss = an <b>unimportant</b> direction → decayed away. Important directions survive.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>w*</dt><dd>Minimum of the unregularized training cost.</dd>
+        <dt>w̃</dt><dd>Minimum of the regularized cost.</dd>
+        <dt>H = QΛQᵀ</dt><dd>Eigendecomposition: Q = orthonormal eigenvectors, Λ = diagonal eigenvalues.</dd>
+        <dt>Positive semidefinite</dt><dd>All eigenvalues ≥ 0 (true at a minimum).</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>One step: w = 2, ∇J = 0.5, ε = 0.1, α = 0.5 → \(w\leftarrow(1-0.05)\cdot2-0.1\cdot0.5=1.9-0.05=1.85\).</li>
+        <li>Whole-run effect: eigenvalues λ₁ = 0.1, λ₂ = 10, α = 1 → factors \(0.1/1.1=0.091\) and \(10/11=0.909\).</li>
+        <li>If \(\mathbf w^*=(2,2)\) in the eigenbasis: \(\tilde{\mathbf w}=(0.18,\,1.82)\) — the unimportant direction almost vanishes.</li>
+      </ol></div>
+    </div>
+    <div data-widget="l2Shrink"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch05-4.html#/s-map">MAP with a Gaussian prior (L2)</a> and <a href="ch04-3.html#/s-jacobian-hessian">Hessian eigenvalues (L3)</a>.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch08-3.html#/s-adam">Adam & weight decay in practice (L8)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-l2-geom" data-part="Part 1 · Penalties & data (7.1–7.5)" data-title="L2 in linear regression" data-stages="loss">
+  <div class="slide-head"><span class="kicker">7.1.1 · L2 for linear regression</span><h2>L2 in linear regression: the input “looks” noisier</h2><div class="stages"></div></div>
+  <p class="bigidea">L2 changes the normal equations from \((\mathbf X^\top\mathbf X)^{-1}\mathbf X^\top\mathbf y\) to \((\mathbf X^\top\mathbf X+\alpha\mathbf I)^{-1}\mathbf X^\top\mathbf y\): α is added to the <b>variance</b> of every feature, so weights on features weakly related to y shrink most.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ (\mathbf X\mathbf w-\mathbf y)^{\top}(\mathbf X\mathbf w-\mathbf y)\ \to\ (\mathbf X\mathbf w-\mathbf y)^{\top}(\mathbf X\mathbf w-\mathbf y)+\tfrac12\alpha\,\mathbf w^{\top}\mathbf w \]<span class="eqno">(7.14–7.15)</span>
+        \[ \mathbf w=(\mathbf X^{\top}\mathbf X)^{-1}\mathbf X^{\top}\mathbf y\ \to\ \mathbf w=(\mathbf X^{\top}\mathbf X+\alpha\mathbf I)^{-1}\mathbf X^{\top}\mathbf y \]<span class="eqno">(7.16–7.17)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>\(\mathbf X^\top\mathbf X\) is proportional to the covariance matrix \(\frac1m\mathbf X^\top\mathbf X\); its diagonal holds each feature’s variance.</li>
+          <li>L2 adds α to that diagonal → the algorithm “perceives” every input as having <b>higher variance</b>.</li>
+          <li>So it shrinks weights on features whose covariance with the target is low compared to that added variance.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Covariance matrix</dt><dd>How features vary and co-vary; diagonal = variances.</dd>
+        <dt>Ridge path</dt><dd>How each weight changes as α goes from 0 to ∞.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>\(\mathbf X^\top\mathbf X=\begin{bmatrix}4&0\\0&1\end{bmatrix}\), \(\mathbf X^\top\mathbf y=(8,1)\) → unregularized w = (8/4, 1/1) = (2, 1).</li>
+        <li>α = 1: \((\mathbf X^\top\mathbf X+\mathbf I)^{-1}\mathbf X^\top\mathbf y=(8/5,\ 1/2)=(1.6,\ 0.5)\).</li>
+        <li>The high-variance feature’s weight drops 20%; the low-variance one is halved.</li>
+      </ol></div>
+    </div>
+    <div data-widget="ridgePath"></div>
+  </div>
+</section>
+
+<section class="slide" id="s-l1" data-part="Part 1 · Penalties & data (7.1–7.5)" data-title="L1 regularization & sparsity" data-stages="loss">
+  <div class="slide-head"><span class="kicker">7.1.2 · L¹ regularization</span><h2>L1 regularization: sparse weights</h2><div class="stages"></div></div>
+  <p class="bigidea">The L1 penalty’s gradient is a <b>constant</b> push α·sign(w), not proportional to w. Result: a soft threshold — small weights become <b>exactly zero</b>, which selects features.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \Omega(\boldsymbol\theta)=\|\mathbf w\|_1=\sum_i|w_i|,\qquad\tilde J=\alpha\|\mathbf w\|_1+J,\qquad\nabla_{\mathbf w}\tilde J=\alpha\,\text{sign}(\mathbf w)+\nabla_{\mathbf w}J \]<span class="eqno">(7.18–7.20)</span>
+        \[ \hat J(\mathbf w)=J(\mathbf w^*)+\sum_i\Big[\tfrac12H_{i,i}(w_i-w_i^*)^2+\alpha|w_i|\Big] \]<span class="eqno">(7.22) diagonal Hessian</span>
+        \[ w_i=\text{sign}(w_i^*)\max\Big\{|w_i^*|-\frac{\alpha}{H_{i,i}},\,0\Big\} \]<span class="eqno">(7.23)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>sign(w) is applied element-wise; at 0 we use a <b>sub-gradient</b>. No clean algebraic solution for a general Hessian, so assume a diagonal one (e.g. inputs decorrelated with PCA).</li>
+          <li>For \(w_i^*&gt;0\): if \(w_i^*\le\alpha/H_{i,i}\) → \(w_i=0\) (penalty overwhelms the data); otherwise it is shifted toward 0 by \(\alpha/H_{i,i}\). Same for negative weights.</li>
+          <li><b>Sparse</b> = many parameters with optimal value 0. Used for <b>feature selection</b>; the <b>LASSO</b> = linear model + least squares + L1.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>‖w‖₁</dt><dd>Sum of absolute values.</dd>
+        <dt>Sub-gradient</dt><dd>A generalized slope for functions with a kink (like |w| at 0).</dd>
+        <dt>Soft threshold</dt><dd>Move toward 0 by a fixed amount; stop at 0.</dd>
+        <dt>LASSO</dt><dd>Least Absolute Shrinkage and Selection Operator.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>w* = (2, 0.3, −0.8), H = I, α = 0.5.</li>
+        <li>L1: \(2-0.5=1.5\); \(|0.3|\le0.5\Rightarrow0\); \(-0.8\to-(0.8-0.5)=-0.3\) → (1.5, <b>0</b>, −0.3).</li>
+        <li>L2 with the same α: divide by 1.5 → (1.33, 0.2, −0.53) — nothing is exactly 0.</li>
+      </ol></div>
+    </div>
+    <div data-widget="l1vsl2"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch05-4.html#/s-map">MAP estimation (L2)</a>: L1 corresponds to a Laplace prior on the weights.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-augment" data-part="Part 1 · Penalties & data (7.1–7.5)" data-title="Dataset augmentation" data-stages="data,batch">
+  <div class="slide-head"><span class="kicker">7.4 · Dataset augmentation</span><h2>Dataset augmentation: more (fake) data</h2><div class="stages"></div></div>
+  <p class="bigidea">The best way to generalize is more data. For classification we can create new (x, y) pairs by <b>transforming x</b> in ways that should not change y — as long as the transformation really keeps the label.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>A classifier must be <b>invariant</b> to many transformations, so generating transformed copies is easy and effective — especially for <b>object recognition</b>: shifts by a few pixels, rotations, scaling.</li>
+          <li>Helps even if the model is already partly translation invariant (e.g. a CNN).</li>
+          <li>Harder for other tasks: generating fake data for density estimation requires already solving density estimation.</li>
+          <li>Don’t change the class: OCR must distinguish b/d and 6/9, so <b>no horizontal flips or 180° rotations</b>.</li>
+          <li><b>Noise injection</b> into inputs (and hidden units — augmentation at many levels of abstraction) is also augmentation; <b>dropout</b> constructs new inputs by multiplying by noise.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Invariance</dt><dd>The output doesn’t change when the input is transformed.</dd>
+        <dt>OCR</dt><dd>Optical character recognition (reading text from images).</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>60 000 training digits, each shifted to 8 neighbouring positions (±1 px) → \(60\,000\times9=540\,000\) examples.</li>
+        <li>Add 2 small rotations each → \(540\,000\times3=1\,620\,000\) — 27× more data at almost no cost.</li>
+      </ol></div>
+    </div>
+    <div data-widget="augmentDigit"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag fwd">Leads to</span><span><a href="ch09.html#/s-equivariance">Equivariance & pooling in CNNs (L10)</a>: building the invariance into the architecture instead of the data.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-noise" data-part="Part 1 · Penalties & data (7.1–7.5)" data-title="Noise robustness" data-stages="forward">
+  <div class="slide-head"><span class="kicker">7.5 · Noise robustness</span><h2>Noise robustness: inputs, hidden units and weights</h2><div class="stages"></div></div>
+  <p class="bigidea">Tiny input noise ≈ a weight-norm penalty. Noise on the <b>weights</b> pushes the model toward <b>flat minima</b> — places where small parameter changes barely change the output.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \boldsymbol\epsilon_{\mathbf W}\sim\mathcal N(\boldsymbol\epsilon;\mathbf 0,\eta\mathbf I),\qquad\tilde J_{\mathbf W}=\mathbb E_{p(\mathbf x,y,\boldsymbol\epsilon_{\mathbf W})}\Big[\big(\hat y_{\boldsymbol\epsilon_{\mathbf W}}(\mathbf x)-y\big)^2\Big] \]<span class="eqno">(7.31)</span>
+        \[ \tilde J_{\mathbf W}\approx J+\eta\,\mathbb E_{p(\mathbf x,y)}\Big[\big\|\nabla_{\mathbf W}\hat y(\mathbf x)\big\|^2\Big]\quad\text{(small }\eta) \]<span class="eqno">(7.33)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>For some models, input noise with infinitesimal variance = a penalty on the norm of the weights. In general noise is more powerful than shrinking parameters, especially on hidden units.</li>
+          <li>Weight noise (mainly used for RNNs): each presentation of an input uses randomly perturbed weights. The extra term penalizes outputs that are sensitive to the weights.</li>
+          <li>It finds points that are not merely minima, but <b>minima surrounded by flat regions</b>.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>η</dt><dd>Variance of the weight noise.</dd>
+        <dt>\(\hat y_{\boldsymbol\epsilon_{\mathbf W}}\)</dt><dd>Output of the network with perturbed weights W + ε.</dd>
+        <dt>Flat minimum</dt><dd>A minimum where the loss stays low over a wide region of weights.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Second-order view: \(\mathbb E[J(w+\epsilon)]\approx J(w)+\frac12\sigma^2J''(w)\).</li>
+        <li>Sharp minimum: J = 0.0, J″ = 100. Flat minimum: J = 0.2, J″ = 1. Noise σ = 0.1.</li>
+        <li>Sharp: \(0+\frac12(0.01)(100)=0.5\). Flat: \(0.2+\frac12(0.01)(1)=0.205\) → the flat minimum wins under noise.</li>
+      </ol></div>
+    </div>
+    <div data-widget="flatMinima"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag same">Compare</span><span><a href="ch08-6.html#/s-continuation">Continuation methods (L9)</a>: the same Gaussian “blurring” of the loss, used for optimization instead of regularization.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-label-smoothing" data-part="Part 1 · Penalties & data (7.1–7.5)" data-title="Label smoothing" data-stages="data,loss">
+  <div class="slide-head"><span class="kicker">7.5.1 · Injecting noise at the output targets</span><h2>Label smoothing</h2><div class="stages"></div></div>
+  <p class="bigidea">Labels contain mistakes, and a softmax can never output exactly 0 or 1. Replace the hard targets with <b>1 − ε</b> (correct) and <b>ε/(k − 1)</b> (others): the model stops chasing infinite confidence but still learns to classify correctly.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \text{target}_i=\begin{cases}1-\epsilon&amp;i=\text{label}\\ \dfrac{\epsilon}{k-1}&amp;\text{otherwise}\end{cases}\qquad\text{loss}=-\sum_i\text{target}_i\log\text{softmax}(\mathbf z)_i \]</div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Maximizing log p(y|x) is harmful if y is wrong. Model the noise: assume the label is correct with probability 1 − ε, otherwise any other label could be correct.</li>
+          <li>This can be built into the cost analytically (no sampling): use soft targets with the usual cross-entropy.</li>
+          <li>With hard targets, maximum likelihood may <b>never converge</b>: the softmax can’t hit 0/1, so the weights grow larger and larger, making more extreme predictions forever.</li>
+          <li>Weight decay could stop that too, but label smoothing prevents hard probabilities <b>without discouraging correct classification</b>.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Hard target</dt><dd>One-hot vector (1 for the label, 0 elsewhere).</dd>
+        <dt>Soft target</dt><dd>A probability vector that spreads a little mass ε over the other classes.</dd>
+        <dt>Margin d</dt><dd>How much larger the correct logit is than the others.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>k = 10, ε = 0.1: correct target 0.9, each other \(0.1/9=0.0111\).</li>
+        <li>Best margin: \(d^*=\log\frac{(1-\epsilon)(k-1)}{\epsilon}=\log\frac{0.9\times9}{0.1}=\log81=4.39\).</li>
+        <li>With hard targets there is no best d: the loss keeps shrinking as d → ∞.</li>
+      </ol></div>
+    </div>
+    <div data-widget="labelSmooth"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch06-1.html#/s-softmax">Softmax & its saturation (L4)</a>.</span></li>
+  </ul></div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-early-stop" data-part="Part 2 · Time & ensembles (7.8–7.12)" data-title="Early stopping" data-stages="final">
+  <div class="slide-head"><span class="kicker">7.8 · Early stopping</span><h2>Early stopping</h2><div class="stages"></div></div>
+  <p class="bigidea">Training error keeps falling, validation error eventually rises. <b>Save the parameters whenever validation improves</b>; stop after p checks without improvement; return the saved parameters. Simple, effective, the most common regularizer in deep learning.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>View it as an efficient <b>hyper-parameter search</b>: the number of training steps has a U-shaped validation curve.</li>
+          <li>It controls <b>effective capacity</b> by limiting how many steps the model gets to fit the training set.</li>
+          <li>Costs: evaluating on the validation set periodically (ideally on a separate machine/GPU) and storing a copy of the best parameters (cheap; written rarely, never read during training).</li>
+          <li>Barely changes the training procedure, the objective or the allowed parameters — unlike weight decay, where too much can trap the network in a bad local minimum. No penalty term, no extra gradients.</li>
+          <li>It needs a validation set, i.e. some data isn’t used for training. Afterwards: (1) retrain from scratch on <b>all</b> data for the same number of steps (or epochs?), or (2) continue training on all data until the validation loss falls below the training loss at the stopping point (cheaper, but may never terminate).</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Patience p</dt><dd>How many evaluations without improvement before stopping.</dd>
+        <dt>Validation check</dt><dd>Evaluating the current parameters on the validation set.</dd>
+        <dt>Effective capacity</dt><dd>What the model can actually reach given the training procedure.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Validation errors at successive checks: 0.30, 0.25, <b>0.22</b>, 0.23, 0.24, 0.26. Patience p = 3.</li>
+        <li>Best so far is 0.22 at check 3 → save θ. Checks 4, 5, 6 don’t improve → 3 in a row → stop after check 6.</li>
+        <li>Return the θ saved at check 3, not the latest one.</li>
+      </ol></div>
+    </div>
+    <div data-widget="earlyStop"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch05-1.html#/s-hyper">Validation sets (L1)</a> and <a href="ch05-1.html#/s-capacity-curve">the U-shaped curve (L1)</a>.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch08-1.html#/s-surrogate">Training stops before a local minimum (L7)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-early-l2" data-part="Part 2 · Time & ensembles (7.8–7.12)" data-title="Early stopping ≈ L2" data-stages="update">
+  <div class="slide-head"><span class="kicker">7.8 · Early stopping as regularization</span><h2>Why early stopping behaves like weight decay</h2><div class="stages"></div></div>
+  <p class="bigidea">Starting from w = 0, gradient descent fits <b>high-curvature</b> directions quickly and <b>low-curvature</b> ones slowly. Stopping after τ steps therefore shrinks the same directions as L2 with \(\alpha\approx\frac{1}{\tau\epsilon}\).</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mathbf w^{(\tau)}=\mathbf w^{(\tau-1)}-\epsilon\mathbf H(\mathbf w^{(\tau-1)}-\mathbf w^*)\ \Rightarrow\ \mathbf w^{(\tau)}-\mathbf w^*=(\mathbf I-\epsilon\mathbf H)(\mathbf w^{(\tau-1)}-\mathbf w^*) \]<span class="eqno">(7.35–7.36)</span>
+        \[ \mathbf Q^{\top}\mathbf w^{(\tau)}=\big[\mathbf I-(\mathbf I-\epsilon\boldsymbol\Lambda)^{\tau}\big]\mathbf Q^{\top}\mathbf w^*\qquad\mathbf Q^{\top}\tilde{\mathbf w}=\big[\mathbf I-(\boldsymbol\Lambda+\alpha\mathbf I)^{-1}\alpha\big]\mathbf Q^{\top}\mathbf w^* \]<span class="eqno">(7.40), (7.42)</span>
+        \[ (\mathbf I-\epsilon\boldsymbol\Lambda)^{\tau}=(\boldsymbol\Lambda+\alpha\mathbf I)^{-1}\alpha\quad\Rightarrow\quad\tau\approx\frac{1}{\epsilon\alpha},\qquad\alpha\approx\frac{1}{\tau\epsilon} \]<span class="eqno">(7.43–7.45)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>ε·τ (learning rate × steps) measures effective capacity: with bounded gradients, it limits how far from θ₀ the parameters can travel — like the reciprocal of a weight-decay coefficient.</li>
+          <li>Assumptions: linear model, quadratic loss, plain gradient descent, w⁽⁰⁾ = 0, ε small enough that \(|1-\epsilon\lambda_i|&lt;1\).</li>
+          <li>Taking logs and using \(\log(1+x)\approx x\) for small ελᵢ and λᵢ/α gives τ ≈ 1/(εα).</li>
+          <li>Early stopping is <b>more</b> than restricting trajectory length: it watches validation error and stops at a good point, so it <b>chooses the amount of regularization automatically</b>, while weight decay needs many training runs with different α.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>τ</dt><dd>Number of gradient steps taken.</dd>
+        <dt>(I − εΛ)^τ</dt><dd>How much of each eigen-component of the initial error remains after τ steps.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>ε = 0.01, τ = 1 000 → equivalent α ≈ 1/(1000 × 0.01) = 0.1.</li>
+        <li>Direction with λ = 0.05: early stopping keeps \(1-(1-0.0005)^{1000}=1-0.606=0.394\); L2 keeps \(0.05/(0.05+0.1)=0.333\) — similar.</li>
+        <li>Direction with λ = 5: early stopping keeps \(1-(0.95)^{1000}\approx1.0\); L2 keeps \(5/5.1=0.98\).</li>
+      </ol></div>
+    </div>
+    <div data-widget="earlyVsL2"></div>
+  </div>
+</section>
+
+<section class="slide" id="s-bagging" data-part="Part 2 · Time & ensembles (7.8–7.12)" data-title="Bagging & ensembles" data-stages="init,final">
+  <div class="slide-head"><span class="kicker">7.11 · Bagging and other ensemble methods</span><h2>Bagging and model averaging</h2><div class="stages"></div></div>
+  <p class="bigidea">Train several models and <b>average their votes</b>. Because different models make <b>partly independent errors</b>, the average is better than a typical member — up to k× better if errors are independent.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mathbb E\Big[\Big(\frac1k\sum_i\epsilon_i\Big)^2\Big]=\frac{1}{k^2}\mathbb E\Big[\sum_i\Big(\epsilon_i^2+\sum_{j\ne i}\epsilon_i\epsilon_j\Big)\Big]=\frac1k v+\frac{k-1}{k}c \]<span class="eqno">(7.50)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li><b>Bagging</b> = bootstrap aggregating. A case of <b>model averaging</b>; techniques using it are <b>ensemble methods</b>.</li>
+          <li>Errors εᵢ with variance v and covariance c: perfectly correlated (c = v) → MSE = v, no help; uncorrelated (c = 0) → MSE = v/k. The ensemble is never worse on average than its members.</li>
+          <li>Bagging: build k datasets of the original size by <b>sampling with replacement</b> → each misses some examples and duplicates others → model i trained on dataset i.</li>
+          <li>Neural nets differ enough even on the <b>same</b> data (random init, minibatch order, hyper-parameters, non-determinism) to benefit from averaging. ML contests are usually won by ensembles of dozens of models.</li>
+          <li><b>Boosting</b> is different: it builds an ensemble with <em>higher</em> capacity (adding networks, or hidden units, incrementally).</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Bootstrap sample</dt><dd>A dataset of size m drawn with replacement from the original m examples.</dd>
+        <dt>v, c</dt><dd>Variance of each model’s error, covariance between two models’ errors.</dd>
+        <dt>Ensemble</dt><dd>A set of models whose predictions are combined.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>k = 10 models, v = 1, c = 0.3: \(\frac{1}{10}+\frac{9}{10}\cdot0.3=0.1+0.27=0.37\).</li>
+        <li>So the averaged model has 63% lower expected squared error than one model.</li>
+        <li>With c = 0 it would be 0.1; with c = 1 it stays 1.0.</li>
+      </ol></div>
+    </div>
+    <div data-widget="ensembleError"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch05-4.html#/s-bias-variance">Variance (L2)</a> and <a href="ch05-4.html#/s-bayes">Bayesian averaging over θ (L2)</a>.</span></li>
+    <li><span class="tag same">Compare</span><span><a href="ch08-6.html#/s-polyak">Polyak averaging (L9)</a>: averages one model’s parameters over time.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-dropout" data-part="Part 2 · Time & ensembles (7.8–7.12)" data-title="Dropout" data-stages="batch,forward">
+  <div class="slide-head"><span class="kicker">7.12 · Dropout</span><h2>Dropout: bagging exponentially many networks, cheaply</h2><div class="stages"></div></div>
+  <p class="bigidea">For every example, <b>randomly remove</b> input and hidden units (multiply their output by 0). This trains an ensemble of all sub-networks that <b>share parameters</b> — exponentially many models with the memory of one.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \min_{\boldsymbol\theta}\ \mathbb E_{\boldsymbol\mu}J(\boldsymbol\theta,\boldsymbol\mu)\qquad\mu_i\sim\text{Bernoulli}(p_i),\ \ p_{\text{input}}\approx0.8,\ \ p_{\text{hidden}}\approx0.5 \]</div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Bagging big networks is impractical (train/evaluate k of them). Dropout approximates it over all sub-networks formed by removing non-output units.</li>
+          <li>Each time an example is loaded, sample an independent binary <b>mask</b> μ for all input and hidden units (inclusion probability is a hyper-parameter); then run forward prop, backprop and the update as usual.</li>
+          <li>The expectation has exponentially many terms, but sampling μ gives an <b>unbiased estimate of its gradient</b>.</li>
+          <li>Differences from bagging: models <b>share parameters</b> (tractable memory), and most sub-networks are never trained at all — a tiny fraction is trained for one step each, and sharing makes the rest good too.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Mask μ</dt><dd>Vector of 0/1 values: 1 = keep the unit, 0 = drop it.</dd>
+        <dt>Inclusion probability p</dt><dd>Chance that a unit is kept.</dd>
+        <dt>Sub-network</dt><dd>The network with some units removed.</dd>
+        <dt>Parameter sharing</dt><dd>All sub-networks use the same underlying weights.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>MLP with 784 inputs and two hidden layers of 1 000: droppable units = 2 784 → \(2^{2784}\) sub-networks.</li>
+        <li>Expected kept units per example: \(0.8\times784+0.5\times2000\approx1627\).</li>
+        <li>Probability of one specific mask for 4 inputs (p = 0.8) where we keep 3: \(0.8^3\times0.2=0.1024\).</li>
+      </ol></div>
+    </div>
+    <div data-widget="dropoutNet"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch06-5.html#/s-example">Backprop through masked units (L5)</a>: dropped units pass no gradient.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch08-6.html#/s-bn-how">Batch normalization (L9)</a>: its batch noise also regularizes and sometimes makes dropout unnecessary.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-dropout-more" data-part="Part 2 · Time & ensembles (7.8–7.12)" data-title="Dropout inference & why it works" data-stages="backward,final">
+  <div class="slide-head"><span class="kicker">7.12 · Dropout (inference and analysis)</span><h2>Predicting with dropout: the weight-scaling rule</h2><div class="stages"></div></div>
+  <p class="bigidea">The ensemble’s prediction would need an average over exponentially many masks. Instead, run the <b>full</b> network once with each unit’s outgoing weights <b>multiplied by its inclusion probability</b> — exact for softmax regression, a very good approximation for deep nets.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \text{bagging: }\frac1k\sum_{i=1}^{k}p^{(i)}(y\mid\mathbf x)\qquad\text{dropout: }\sum_{\boldsymbol\mu}p(\boldsymbol\mu)\,p(y\mid\mathbf x,\boldsymbol\mu) \]<span class="eqno">(7.52–7.53)</span>
+        \[ \tilde p_{\text{ensemble}}(y\mid\mathbf x)=\sqrt[2^d]{\prod_{\boldsymbol\mu}p(y\mid\mathbf x,\boldsymbol\mu)},\qquad p_{\text{ensemble}}(y\mid\mathbf x)=\frac{\tilde p_{\text{ensemble}}(y\mid\mathbf x)}{\sum_{y'}\tilde p_{\text{ensemble}}(y'\mid\mathbf x)} \]<span class="eqno">(7.54–7.55)</span>
+        \[ P(y\mid\mathbf v;\mathbf d)=\text{softmax}\big(\mathbf W^{\top}(\mathbf d\odot\mathbf v)+\mathbf b\big)_y\ \ \Rightarrow\ \ P_{\text{ensemble}}(y\mid\mathbf v)=\text{softmax}\Big(\tfrac12\mathbf W^{\top}\mathbf v+\mathbf b\Big)_y \]<span class="eqno">(7.56–7.66)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li><b>Inference</b> = combining votes. Approximations: average 10–20 sampled masks, or the cheaper <b>weight scaling inference rule</b> (one forward pass) that matches the <b>geometric</b> mean.</li>
+          <li>Motivation: keep the expected total input to each unit at test time equal to training time. With p = ½: divide weights by 2 after training — or multiply unit states by 2 during training.</li>
+          <li>Exact for softmax regression, conditionally Gaussian regression, and deep nets without non-linearities; approximate otherwise, but works well (sometimes better than 1 000-sample Monte Carlo; sometimes 20 samples win — problem dependent). Dropout beat weight decay in experiments.</li>
+          <li><b>Cost</b>: O(n) per example per update to sample and apply n binary numbers (+ O(n) memory until backprop). Inference costs the same as without dropout.</li>
+          <li>Works with nearly any model trained by SGD with distributed representations (MLPs, RBMs, RNNs). Reduces effective capacity → use <b>bigger</b> models and train longer. Less useful with huge datasets or very few labels.</li>
+          <li>Why it works: hidden units must be good <b>in many contexts</b> (any partner may be missing); it destroys <b>extracted features</b> (e.g. the “nose” detector) rather than raw pixels; and the noise is <b>multiplicative</b>, so units can’t just grow large to drown additive noise. Batch norm’s noise has a similar regularizing effect.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Arithmetic mean</dt><dd>Average of the probabilities.</dd>
+        <dt>Geometric mean</dt><dd>2ᵈ-th root of the product of the probabilities (then renormalized).</dd>
+        <dt>Weight scaling rule</dt><dd>Multiply outgoing weights by p at test time.</dd>
+        <dt>Monte Carlo approximation</dt><dd>Average predictions over a few random masks.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Hidden unit with output h = 4, kept with p = 0.5 during training: expected contribution to the next layer = 0.5 × 4 × w = 2w.</li>
+        <li>At test time it is always present, so scale: (4 × w) × 0.5 = 2w — same expectation.</li>
+        <li>“Inverted dropout” alternative: during training multiply kept units by 1/p = 2 → 8w half the time, 0 otherwise → expectation 4w; then use the network unchanged at test time.</li>
+      </ol></div>
+    </div>
+    <div data-widget="weightScaling"></div>
+  </div>
+</section>
+
+<section class="slide" id="s-summary" data-part="Wrap-up" data-title="Summary: how it all connects" data-stages="data,batch,forward,loss,update,final">
+  <div class="slide-head"><span class="kicker">Wrap-up</span><h2>Summary: how it all connects</h2><div class="stages"></div></div>
+  <p class="bigidea">All regularizers reduce variance at a small cost in bias: <b>penalize</b> weights (L2/L1), <b>enrich</b> data (augmentation, noise, smoothing), <b>stop early</b> (≈ L2), and <b>average</b> models (bagging, dropout).</p>
+  <div class="card" style="padding:0;overflow:hidden"><div class="scroll-x"><table class="data-table">
+    <thead><tr><th>Technique</th><th>Formula / rule</th><th>Effect</th><th>Training step</th></tr></thead>
+    <tbody>
+      <tr><td>L2 weight decay</td><td>\(\mathbf w\leftarrow(1-\epsilon\alpha)\mathbf w-\epsilon\nabla J\)</td><td>scales eigen-directions by λ/(λ+α)</td><td><span class="pill">Loss</span><span class="pill">Update</span></td></tr>
+      <tr><td>L1</td><td>\(\text{sign}(w^*)\max\{|w^*|-\alpha/H,0\}\)</td><td>sparse weights</td><td><span class="pill">Loss</span></td></tr>
+      <tr><td>Augmentation</td><td>(T(x), y)</td><td>invariances</td><td><span class="pill">Data</span><span class="pill">Minibatch</span></td></tr>
+      <tr><td>Weight noise</td><td>J + η E‖∇_W ŷ‖²</td><td>flat minima</td><td><span class="pill">Forward</span></td></tr>
+      <tr><td>Label smoothing</td><td>1 − ε, ε/(k−1)</td><td>finite logits</td><td><span class="pill">Loss</span></td></tr>
+      <tr><td>Early stopping</td><td>α ≈ 1/(τε)</td><td>automatic L2</td><td><span class="pill">Evaluate</span></td></tr>
+      <tr><td>Bagging</td><td>v/k + (k−1)c/k</td><td>variance reduction</td><td><span class="pill">Init</span><span class="pill">Evaluate</span></td></tr>
+      <tr><td>Dropout</td><td>E_μ J(θ, μ); test with p·W</td><td>exponential shared ensemble</td><td><span class="pill">Forward</span><span class="pill">Evaluate</span></td></tr>
+    </tbody>
+  </table></div></div>
+  <div class="row3" style="margin-top:16px">
+    <div class="card plain"><h3><span class="dot"></span>Remember</h3><p>Big model + good regularization usually beats a small model.</p></div>
+    <div class="card plain"><h3><span class="dot"></span>Next lecture</h3><p><a href="ch08-1.html">Optimization I</a>: why training these networks is hard in the first place.</p></div>
+    <div class="card fit"><h3><span class="dot"></span>Check yourself</h3><p>Ten quiz questions with explanations.</p><button class="btn primary" type="button" data-goto="s-quiz" style="margin-top:6px">Take the quiz →</button></div>
+  </div>
+</section>
+
+<section class="slide" id="s-quiz" data-part="Wrap-up" data-title="Check yourself (quiz)">
+  <div class="slide-head"><span class="kicker">Wrap-up</span><h2>Check yourself</h2><p class="lede">Pick an answer to see whether it is right and why.</p></div>
+  <div data-widget="quiz"></div>
+  <footer class="credits">Study notes for Deep Learning, chapter 7. Equation numbers follow Goodfellow, Bengio &amp; Courville, <em>Deep Learning</em> (MIT Press, 2016). Explanations, diagrams and demos are original.</footer>
+</section>
+
+</main>
+</body>
+</html>
