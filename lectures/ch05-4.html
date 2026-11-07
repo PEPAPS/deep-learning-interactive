@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Machine Learning Basics II</title>
+<meta name="description" content="Interactive notes for Deep Learning chapter 5.4–5.7: estimators, bias and variance, maximum likelihood, Bayesian statistics and MAP, curse of dimensionality, probabilistic supervised learning, generative vs discriminative models.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232a78d6'/%3E%3Cpath d='M6 9c5 0 6 14 10 14s5-14 10-14' fill='none' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<link rel="stylesheet" href="../css/style.css?v=9">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script defer src="../js/core.js?v=9"></script>
+<script defer src="../js/course.js?v=9"></script>
+<script defer src="../js/quiz.js?v=9"></script>
+<script defer src="../js/lectures/ch05-4.js?v=9"></script>
+</head>
+<body data-page="lecture" data-lecture="ch05-4">
+<script>
+window.TOPICS = {
+  data: [['s-point-est', 'Data as random samples'], ['s-curse', 'Curse of dimensionality']],
+  init: [['s-gen-disc', 'Generative or discriminative model?'], ['s-smoothness', 'Built-in assumptions (smoothness, depth)'], ['s-bayes', 'Prior beliefs about θ']],
+  loss: [['s-mle', 'Maximum likelihood → cross-entropy'], ['s-cond-ll', 'MSE = Gaussian likelihood'], ['s-map', 'Weight decay = Gaussian prior'], ['s-prob-sl', 'Logistic regression NLL']],
+  update: [['s-prob-sl', 'Gradient descent on the NLL']],
+  final: [['s-bias', 'Bias of an estimator'], ['s-variance', 'Error bars on the test error'], ['s-bias-variance', 'Bias–variance trade-off'], ['s-mle-props', 'Consistency & efficiency']]
+};
+</script>
+
+<main class="deck" id="deck">
+
+<section class="slide" id="s-title" data-part="Start here" data-title="Welcome: estimators & likelihood">
+  <div class="slide-head">
+    <span class="kicker">Lecture 2 · Chapter 5.4 – 5.7</span>
+    <h1>Machine Learning Basics II</h1>
+    <p class="lede">Lecture 1 described over- and underfitting with pictures. Statistics makes them precise: <b>bias</b> and <b>variance</b>. Then we answer “where do loss functions come from?” with <b>maximum likelihood</b>, add prior knowledge with <b>Bayesian</b> and <b>MAP</b> estimation, and see why classic methods fail in high dimensions — the motivation for deep learning.</p>
+  </div>
+  <div class="road">
+    <div class="card big"><span class="kicker">Part 1 · 5.4 – 5.5</span><h4>Estimators &amp; maximum likelihood</h4><ol><li>Point estimators, bias, variance</li><li>Bias–variance trade-off</li><li>Maximum likelihood, KL, cross-entropy</li><li>Linear regression as MLE</li></ol><button class="btn primary go" type="button" data-goto="s-point-est">Start →</button></div>
+    <div class="card big"><span class="kicker">Part 2 · 5.6 – 5.7 (+5.11)</span><h4>Bayes, high dimensions, classifiers</h4><ol><li>Bayesian statistics &amp; MAP</li><li>Curse of dimensionality, smoothness prior</li><li>Logistic regression</li><li>Generative vs. discriminative</li></ol><button class="btn primary go" type="button" data-goto="s-bayes">Jump to Part 2 →</button></div>
+  </div>
+</section>
+
+<section class="slide" id="s-loop" data-part="Start here" data-title="Where this lecture fits" data-stages="data,init,loss,update,final">
+  <div class="slide-head"><span class="kicker">Start here</span><h2>Where this lecture fits in training</h2><div class="stages"></div></div>
+  <p class="bigidea">This lecture explains <b>where the loss function comes from</b> (maximum likelihood, step 5) and gives us the language — bias, variance, error bars — to judge results in the <b>evaluation</b> step.</p>
+  <div class="stack"><div data-widget="loop"></div>
+    <div class="row3">
+      <div class="card plain"><h3><span class="dot"></span>Loss = negative log-likelihood</h3><p>Almost every loss you will meet (MSE, cross-entropy, softmax loss) is a negative log-likelihood. MLE tells us which loss matches which output type.</p></div>
+      <div class="card plain"><h3><span class="dot"></span>Regularizer = prior</h3><p>MAP estimation shows weight decay is a Gaussian prior on the weights: “prefer small weights” becomes a probability statement.</p></div>
+      <div class="card plain"><h3><span class="dot"></span>Evaluation = statistics</h3><p>A test error is itself an estimate with a standard error. Bias and variance explain the U-shaped curve of Lecture 1.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-point-est" data-part="Part 1 · Estimators & likelihood (5.4–5.5)" data-title="Point estimation" data-stages="data,final">
+  <div class="slide-head"><span class="kicker">5.4.1 · Point estimation</span><h2>Point estimators: a best single guess from data</h2><div class="stages"></div></div>
+  <p class="bigidea">An <b>estimator</b> is any function of the data that guesses an unknown quantity. Because the data are random, the guess \(\hat\theta\) is a <b>random variable</b> — draw a new dataset and you get a new guess.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <p><b>Point estimation</b> = give the single “best” prediction of some quantity — one parameter, or a vector of parameters such as the weights of linear regression. We write the estimate with a hat: \(\hat\theta\).</p>
+        <p><b>Frequentist view:</b> the true \(\theta\) is fixed but unknown; \(\hat\theta\) depends on the random data, so it is random. A good estimator is one whose output is usually <b>close to the true θ</b>.</p>
+        <p><b>Function estimation:</b> if \(y=f(\mathbf x)+\epsilon\) (ε = the part of y not predictable from x), a learned model \(\hat f\) is just a point estimate in “function space”.</p>
+      </div>
+      <div class="math">\[ \hat{\boldsymbol\theta}_m=g\big(\mathbf x^{(1)},\dots,\mathbf x^{(m)}\big) \]<span class="eqno">(5.19)</span></div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>\(\theta\)</dt><dd>The true parameter that generated the data (unknown).</dd>
+        <dt>\(\hat\theta_m\)</dt><dd>Our estimate computed from m examples.</dd>
+        <dt>Estimator / statistic \(g\)</dt><dd>The recipe (function) that turns data into the estimate.</dd>
+        <dt>i.i.d.</dt><dd>Examples drawn independently from the same distribution.</dd>
+        <dt>Bernoulli(θ)</dt><dd>A coin: value 1 with probability θ, value 0 with probability 1 − θ.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Ten flips: 1, 0, 0, 1, 1, 0, 1, 0, 0, 1.</li>
+        <li>Estimator “fraction of heads”: \(\hat\theta=\frac{1+0+0+1+1+0+1+0+0+1}{10}=\frac{5}{10}=0.5\).</li>
+        <li>Another ten flips from the <em>same</em> coin might give 3 heads → \(\hat\theta=0.3\). Same recipe, different data, different answer — that is why \(\hat\theta\) has a distribution (see the histogram).</li>
+      </ol></div>
+    </div>
+    <div data-widget="coinSampler"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch05-1.html#/s-linreg">Linear regression (L1)</a>: the learned weights \(\hat{\mathbf w}\) are a point estimate.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch08-1.html#/s-minibatch">Minibatch gradients (L7)</a>: a minibatch gradient is itself an estimator of the true gradient, with its own variance.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-bias" data-part="Part 1 · Estimators & likelihood (5.4–5.5)" data-title="Bias of an estimator" data-stages="final">
+  <div class="slide-head"><span class="kicker">5.4.2 · Bias</span><h2>Bias: is the estimator right <em>on average</em>?</h2><div class="stages"></div></div>
+  <p class="bigidea"><b>Bias</b> = average guess − true value. Zero bias means: over many datasets, the errors cancel out. The sample mean is unbiased; the “divide by m” variance is <b>biased</b> (too small by σ²/m).</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \text{bias}(\hat\theta_m)=\mathbb E(\hat\theta_m)-\theta \]<span class="eqno">(5.20)</span>
+        \[ \text{Bernoulli: } P(x;\theta)=\theta^{x}(1-\theta)^{1-x},\quad \hat\theta_m=\frac1m\sum_i x^{(i)}\;\Rightarrow\;\mathbb E[\hat\theta_m]=\frac1m\sum_i\mathbb E[x^{(i)}]=\theta \]<span class="eqno">(5.21–5.27) unbiased</span>
+        \[ \hat\sigma_m^2=\frac1m\sum_i\big(x^{(i)}-\hat\mu_m\big)^2,\qquad \mathbb E[\hat\sigma_m^2]=\frac{m-1}{m}\sigma^2\;\Rightarrow\;\text{bias}=-\frac{\sigma^2}{m} \]<span class="eqno">(5.36–5.40) biased</span>
+        \[ \tilde\sigma_m^2=\frac{1}{m-1}\sum_i\big(x^{(i)}-\hat\mu_m\big)^2,\qquad\mathbb E[\tilde\sigma_m^2]=\sigma^2 \]<span class="eqno">unbiased sample variance</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <p><b>Unbiased:</b> bias = 0. <b>Asymptotically unbiased:</b> bias → 0 as m → ∞ (the “divide by m” variance is asymptotically unbiased). The Gaussian sample mean \(\hat\mu_m=\frac1m\sum x^{(i)}\) is unbiased too.</p>
+        <p>Why is \(\hat\sigma^2\) too small? The deviations are measured from \(\hat\mu_m\), which is computed from the same points and therefore sits <em>closer</em> to them than the true μ. Dividing by m − 1 corrects for this.</p>
+        <p>Unbiased is nice but not always “best” — we often prefer slightly biased estimators with much smaller variance (next slides).</p>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>\(\mathbb E(\cdot)\)</dt><dd>Expected value: the average over infinitely many random datasets.</dd>
+        <dt>Unbiased</dt><dd>\(\mathbb E(\hat\theta_m)=\theta\).</dd>
+        <dt>Gaussian \(\mathcal N(x;\mu,\sigma^2)\)</dt><dd>Bell curve with mean μ and variance σ²: \(\frac{1}{\sqrt{2\pi\sigma^2}}\exp\!\big(-\frac{(x-\mu)^2}{2\sigma^2}\big)\).</dd>
+        <dt>Sample mean \(\hat\mu_m\)</dt><dd>Average of the data points.</dd>
+        <dt>Sample variance</dt><dd>Average squared distance from the sample mean.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Data: 2, 4, 6 (m = 3). Sample mean \(\hat\mu=(2+4+6)/3=4\).</li>
+        <li>Squared deviations: \((2-4)^2+(4-4)^2+(6-4)^2=4+0+4=8\).</li>
+        <li>Biased: \(\hat\sigma^2=8/3=2.667\). Unbiased: \(\tilde\sigma^2=8/2=4\).</li>
+        <li>If the true σ² were 4, the biased version is expected to give \(\frac{m-1}{m}\sigma^2=\frac23\cdot4=2.667\) on average: bias \(=-4/3\).</li>
+      </ol></div>
+    </div>
+    <div data-widget="varianceBias"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag fwd">Leads to</span><span><a href="ch08-6.html#/s-bn-test">Batch-norm running statistics (L9)</a>: BN estimates means and variances of activations from minibatches.</span></li>
+    <li><span class="tag same">Compare</span><span><a href="ch05-1.html#/s-capacity">Underfitting (L1)</a>: a model with too little capacity is a <em>biased</em> estimator of the true function.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-variance" data-part="Part 1 · Estimators & likelihood (5.4–5.5)" data-title="Variance & standard error" data-stages="final">
+  <div class="slide-head"><span class="kicker">5.4.3 · Variance and standard error</span><h2>Variance, standard error and confidence intervals</h2><div class="stages"></div></div>
+  <p class="bigidea"><b>Variance</b> measures how much the estimate would change if we resampled the data. Its square root, the <b>standard error</b>, gives error bars: SE of a mean = σ/√m.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \text{SE}(\hat\mu_m)=\sqrt{\operatorname{Var}\Big[\frac1m\sum_{i=1}^{m}x^{(i)}\Big]}=\frac{\sigma}{\sqrt m} \]<span class="eqno">(5.46)</span>
+        \[ \big(\hat\mu_m-1.96\,\text{SE}(\hat\mu_m),\;\hat\mu_m+1.96\,\text{SE}(\hat\mu_m)\big) \]<span class="eqno">(5.47) 95% confidence interval</span>
+        \[ \operatorname{Var}(\hat\theta_m)=\frac{\theta(1-\theta)}{m}\quad\text{(Bernoulli)} \]<span class="eqno">(5.48–5.53)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <p>We estimate generalization error by the average error on a test set; the <b>number of test examples</b> decides how accurate that estimate is. By the <b>central limit theorem</b> the average is approximately Gaussian, so “estimate ± 1.96·SE” contains the true value about 95% of the time.</p>
+        <p>We don’t know σ, so we plug in an estimate; \(\sqrt{\text{sample variance}}\) slightly underestimates σ, but for large m it is fine. Variance of popular estimators <b>shrinks as m grows</b>.</p>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Variance \(\operatorname{Var}(\hat\theta)\)</dt><dd>Expected squared distance of the estimate from its own average.</dd>
+        <dt>Standard error SE</dt><dd>\(\sqrt{\operatorname{Var}}\): the typical size of the estimate’s random wobble.</dd>
+        <dt>Central limit theorem</dt><dd>Averages of many independent values are approximately Gaussian.</dd>
+        <dt>Confidence interval</dt><dd>A range built so that it covers the true value with a chosen probability (here 95%; 1.96 is the 97.5% point of a standard Gaussian).</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Test set: m = 1 000 images, 80 mistakes → \(\hat p=80/1000=0.08\).</li>
+        <li>\(\text{SE}=\sqrt{\hat p(1-\hat p)/m}=\sqrt{0.08\times0.92/1000}=\sqrt{0.0000736}=0.0086\).</li>
+        <li>95% CI: \(0.08\pm1.96\times0.0086=0.08\pm0.0168\Rightarrow[0.063,\;0.097]\).</li>
+        <li>So “model A: 8.0% vs model B: 8.5%” on this test set is <b>not</b> a reliable difference.</li>
+      </ol></div>
+    </div>
+    <div data-widget="ciDemo"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag fwd">Leads to</span><span><a href="ch08-1.html#/s-minibatch">Minibatch size (L7)</a>: the same σ/√m rule says a 100× bigger batch only gives a 10× more accurate gradient.</span></li>
+    <li><span class="tag back">Builds on</span><span><a href="ch05-1.html#/s-cv">Cross-validation (L1)</a>: used when the test set would be too small for tight error bars.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-bias-variance" data-part="Part 1 · Estimators & likelihood (5.4–5.5)" data-title="Bias–variance trade-off" data-stages="final">
+  <div class="slide-head"><span class="kicker">5.4.4 · Trading off bias and variance</span><h2>The bias–variance trade-off</h2><div class="stages"></div></div>
+  <p class="bigidea">Expected squared error = <b>bias² + variance</b>. More capacity → lower bias, higher variance. The best model balances the two — this <em>is</em> the U-shaped curve of Lecture 1.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \text{MSE}=\mathbb E\big[(\hat\theta_m-\theta)^2\big]=\text{Bias}(\hat\theta_m)^2+\operatorname{Var}(\hat\theta_m) \]<span class="eqno">(5.54)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li><b>Bias</b>: expected deviation from the true value — systematic error (aiming at the wrong spot).</li>
+          <li><b>Variance</b>: deviation from the expected estimate caused by the particular sample — random error (shaky aim).</li>
+          <li>Choose between a high-bias and a high-variance estimator by <b>cross-validation</b>, or by comparing their <b>MSE</b>, which includes both.</li>
+          <li>Linked to capacity: simple models (low capacity) = high bias → <b>underfit</b>; flexible models = high variance → <b>overfit</b>.</li>
+        </ul>
+      </div>
+      <div class="card analogy"><h3><span class="dot"></span>Analogy: darts</h3><p>High bias = all darts land close together but left of the bullseye. High variance = darts centred on the bullseye on average but scattered everywhere. The total miss (MSE) counts both.</p></div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>MSE of an estimator</dt><dd>Average squared distance between estimate and truth, over random datasets.</dd>
+        <dt>\(\mathbb E[\hat f(x)]\)</dt><dd>The average fitted curve (thick orange line in the demo).</dd>
+        <dt>Noise σ²</dt><dd>Irreducible error (the Bayes error) that adds to bias² + variance on new data.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Estimator A: bias 0.1, variance 0.04 → MSE \(=0.1^2+0.04=0.01+0.04=0.05\).</li>
+        <li>Estimator B: bias 0 (unbiased), variance 0.09 → MSE \(=0+0.09=0.09\).</li>
+        <li>A is <b>better</b> despite being biased — a small bias bought a big reduction in variance.</li>
+      </ol></div>
+    </div>
+    <div data-widget="biasVariance"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch05-1.html#/s-capacity-curve">The U-shaped curve (L1)</a>.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch07.html#/s-reg-what">Regularization (L6)</a>: “trade increased bias for reduced variance” is the definition of a good regularizer; <a href="ch07.html#/s-bagging">bagging</a> reduces variance by averaging.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-mle" data-part="Part 1 · Estimators & likelihood (5.4–5.5)" data-title="Maximum likelihood" data-stages="loss">
+  <div class="slide-head"><span class="kicker">5.5 · Maximum likelihood estimation</span><h2>Maximum likelihood: the principle behind most losses</h2><div class="stages"></div></div>
+  <p class="bigidea">Pick the parameters that make the observed data <b>most probable</b>. In practice: maximize the <b>sum of log-probabilities</b> — equivalently, minimize the <b>cross-entropy</b> (KL divergence) between the data and the model.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \boldsymbol\theta_{\text{ML}}=\arg\max_{\boldsymbol\theta}\prod_{i=1}^{m}p_{\text{model}}\big(\mathbf x^{(i)};\boldsymbol\theta\big)=\arg\max_{\boldsymbol\theta}\sum_{i=1}^{m}\log p_{\text{model}}\big(\mathbf x^{(i)};\boldsymbol\theta\big) \]<span class="eqno">(5.57–5.58)</span>
+        \[ =\arg\max_{\boldsymbol\theta}\ \mathbb E_{\mathbf x\sim\hat p_{\text{data}}}\log p_{\text{model}}(\mathbf x;\boldsymbol\theta) \]<span class="eqno">(5.59) divide by m</span>
+        \[ D_{\text{KL}}\big(\hat p_{\text{data}}\,\|\,p_{\text{model}}\big)=\mathbb E_{\mathbf x\sim\hat p_{\text{data}}}\big[\log\hat p_{\text{data}}(\mathbf x)-\log p_{\text{model}}(\mathbf x)\big] \]<span class="eqno">(5.60) → minimize \(-\mathbb E\log p_{\text{model}}\) (5.61)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <p>Rather than guessing an estimator and checking its bias and variance, maximum likelihood gives a <b>recipe</b> that produces good estimators for any model.</p>
+        <ul>
+          <li>The product of many probabilities <b>underflows</b> to 0 on a computer; the log turns it into a sum without changing the argmax.</li>
+          <li>Dividing by m gives an average (an expectation over the <b>empirical distribution</b> \(\hat p_{\text{data}}\) of the training set).</li>
+          <li>The first KL term doesn’t depend on the model, so minimizing KL = minimizing <b>cross-entropy</b> \(-\mathbb E\log p_{\text{model}}\).</li>
+          <li><b>Any</b> negative log-likelihood is a cross-entropy — MSE is the cross-entropy between the data and a Gaussian model.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Likelihood</dt><dd>Probability of the observed data viewed as a function of θ.</dd>
+        <dt>\(\arg\max\)</dt><dd>“The θ at which the expression is largest” (not the largest value itself).</dd>
+        <dt>Empirical distribution \(\hat p_{\text{data}}\)</dt><dd>Probability 1/m on each training example.</dd>
+        <dt>KL divergence</dt><dd>A non-negative measure of how different two distributions are (0 only when equal).</dd>
+        <dt>Cross-entropy</dt><dd>\(H(p,q)=-\mathbb E_{p}\log q\); the average “surprise” of q on data from p.</dd>
+        <dt>Underflow</dt><dd>A number too small for the computer, rounded to 0.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>7 heads in 10 flips. \(L(0.5)=0.5^{10}=0.000977\).</li>
+        <li>\(L(0.7)=0.7^7\cdot0.3^3=0.08235\times0.027=0.002224\) — 2.3× larger, so θ = 0.7 explains the data better.</li>
+        <li>Log version: \(\log L(0.7)=7\ln0.7+3\ln0.3=7(-0.357)+3(-1.204)=-6.109\).</li>
+        <li>Cross-entropy example: data distribution (0.5, 0.5), model (0.8, 0.2): \(H=-(0.5\ln0.8+0.5\ln0.2)=0.916\); entropy of the data \(=\ln2=0.693\); so \(D_{\text{KL}}=0.916-0.693=0.223\).</li>
+      </ol></div>
+    </div>
+    <div data-widget="mleCoin"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag fwd">Leads to</span><span><a href="ch06-1.html#/s-cost-mle">Cost functions of neural nets (L4)</a>: networks are trained with exactly this negative log-likelihood.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch08-1.html#/s-erm">Empirical risk minimization (L7)</a>: “expectation over \(\hat p_{\text{data}}\)” is the empirical risk.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-cond-ll" data-part="Part 1 · Estimators & likelihood (5.4–5.5)" data-title="Linear regression as MLE" data-stages="loss">
+  <div class="slide-head"><span class="kicker">5.5.1 · Conditional log-likelihood</span><h2>Conditional likelihood &amp; linear regression as MLE</h2><div class="stages"></div></div>
+  <p class="bigidea">For supervised learning maximize \(\sum\log p(y^{(i)}\mid\mathbf x^{(i)};\theta)\). If the model predicts a <b>Gaussian</b> around \(\hat y\), this is exactly <b>minimizing the MSE</b> — the justification for the squared error.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \boldsymbol\theta_{\text{ML}}=\arg\max_{\boldsymbol\theta}P(\mathbf Y\mid\mathbf X;\boldsymbol\theta)=\arg\max_{\boldsymbol\theta}\sum_{i=1}^{m}\log P\big(\mathbf y^{(i)}\mid\mathbf x^{(i)};\boldsymbol\theta\big) \]<span class="eqno">(5.62–5.63)</span>
+        \[ p(y\mid\mathbf x)=\mathcal N\big(y;\hat y(\mathbf x;\mathbf w),\sigma^2\big) \]<span class="eqno">(5.64)</span>
+        \[ \sum_{i=1}^{m}\log p\big(y^{(i)}\mid\mathbf x^{(i)};\boldsymbol\theta\big)=-m\log\sigma-\frac m2\log(2\pi)-\sum_{i=1}^{m}\frac{\|\hat y^{(i)}-y^{(i)}\|^2}{2\sigma^2} \]<span class="eqno">(5.65)</span>
+        \[ \text{MSE}_{\text{train}}=\frac1m\sum_{i=1}^{m}\|\hat y^{(i)}-y^{(i)}\|^2 \]<span class="eqno">(5.66)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <p>Think of the model as producing a whole <b>distribution</b> of possible y for each x (with infinite data we would see many different y for the same x). Assume it’s a Gaussian centred on the prediction \(\hat y\), with a fixed variance σ² chosen by the user.</p>
+        <p>In (5.65) only the last term depends on w, and it is \(-\frac{m}{2\sigma^2}\text{MSE}\). So the two criteria have <b>different values but the same optimum</b>.</p>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Conditional likelihood</dt><dd>Probability of the targets given the inputs, \(P(\mathbf Y\mid\mathbf X;\theta)\).</dd>
+        <dt>\(\mathcal N(y;\hat y,\sigma^2)\)</dt><dd>Gaussian over y with mean \(\hat y\) and variance σ².</dd>
+        <dt>Constant terms</dt><dd>\(-m\log\sigma-\frac m2\log2\pi\) don’t depend on w, so they don’t move the optimum.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>One point: \(y=3\), prediction \(\hat y=2.5\), σ = 1.</li>
+        <li>\(\log p=-\log1-\frac12\log(2\pi)-\frac{(2.5-3)^2}{2}=0-0.919-0.125=-1.044\).</li>
+        <li>If the prediction were 3 exactly: \(-0.919\) (higher). Every unit of squared error costs \(\frac{1}{2\sigma^2}\) log-likelihood.</li>
+      </ol></div>
+    </div>
+    <div data-widget="gaussLik"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch05-1.html#/s-linreg">Linear regression & normal equations (L1)</a>.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch06-1.html#/s-output-linear">Linear output units for Gaussian outputs (L4)</a> and <a href="ch06-1.html#/s-output-sigmoid">sigmoid units for Bernoulli outputs (L4)</a>: the same MLE recipe for other output types.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-mle-props" data-part="Part 1 · Estimators & likelihood (5.4–5.5)" data-title="Consistency & efficiency" data-stages="final">
+  <div class="slide-head"><span class="kicker">5.4.5 · 5.5.2 · Consistency &amp; properties of ML</span><h2>Consistency, and why maximum likelihood is preferred</h2><div class="stages"></div></div>
+  <p class="bigidea">A <b>consistent</b> estimator converges to the truth as data grows. Under mild conditions, maximum likelihood is consistent and <b>efficient</b> — asymptotically no consistent estimator has lower MSE.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \operatorname*{plim}_{m\to\infty}\hat\theta_m=\theta \]<span class="eqno">(5.55)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li><b>Convergence in probability:</b> for any ε &gt; 0, \(P(|\hat\theta_m-\theta|&gt;\varepsilon)\to0\). That is (weak) <b>consistency</b>. <b>Strong consistency</b>: \(P(\lim\hat\theta_m=\theta)=1\) (almost sure convergence).</li>
+          <li>Consistency ⇒ bias disappears with more data. But <b>unbiased does not imply consistent</b>: “use only the first sample” is unbiased forever, yet never converges.</li>
+          <li>ML is consistent if (1) the true \(p_{\text{data}}\) lies inside the model family, and (2) exactly one θ produces it.</li>
+          <li><b>Efficiency:</b> for large m, the <b>Cramér–Rao lower bound</b> shows no consistent estimator has lower parametric MSE than ML. Consistency + efficiency ⇒ ML is the default choice.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>plim</dt><dd>Limit in probability.</dd>
+        <dt>Consistent</dt><dd>Gets arbitrarily close to the truth with enough data.</dd>
+        <dt>Efficient</dt><dd>Reaches a given accuracy with the fewest examples.</dd>
+        <dt>Cramér–Rao bound</dt><dd>A theoretical lower limit on the variance of (unbiased) estimators.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Data ~ \(\mathcal N(2,1)\). Sample mean SE \(=1/\sqrt m\): m = 4 → 0.5; m = 100 → 0.1; m = 10 000 → 0.01 → shrinks to 0 → consistent.</li>
+        <li>Estimator \(\hat\mu=x^{(1)}\): its SE is always \(\sigma=1\) whatever m is → not consistent, though \(\mathbb E[x^{(1)}]=2\) (unbiased).</li>
+      </ol></div>
+    </div>
+    <div data-widget="consistency"></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-bayes" data-part="Part 2 · Bayes, dimensions, classifiers (5.6–5.7)" data-title="Bayesian statistics" data-stages="init,loss">
+  <div class="slide-head"><span class="kicker">5.6 · Bayesian statistics</span><h2>Bayesian statistics: θ itself is uncertain</h2><div class="stages"></div></div>
+  <p class="bigidea">Frequentist: θ fixed, data random. <b>Bayesian</b>: data observed (fixed), θ uncertain → a <b>probability distribution over θ</b> that starts as a <b>prior</b> and is updated by the data into a <b>posterior</b>.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ p\big(\boldsymbol\theta\mid\mathbf x^{(1)},\dots,\mathbf x^{(m)}\big)=\frac{p\big(\mathbf x^{(1)},\dots,\mathbf x^{(m)}\mid\boldsymbol\theta\big)\,p(\boldsymbol\theta)}{p\big(\mathbf x^{(1)},\dots,\mathbf x^{(m)}\big)} \]<span class="eqno">(5.67) Bayes’ rule</span>
+        \[ p\big(x^{(m+1)}\mid\mathbf x^{(1)},\dots,\mathbf x^{(m)}\big)=\int p\big(x^{(m+1)}\mid\boldsymbol\theta\big)\,p\big(\boldsymbol\theta\mid\mathbf x^{(1)},\dots,\mathbf x^{(m)}\big)\,d\boldsymbol\theta \]<span class="eqno">(5.68) predict with all θ</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li><b>Prior</b> \(p(\theta)\): belief before data — usually broad (high entropy), or preferring “simple” solutions (small weights, nearly constant functions).</li>
+          <li>Data usually make the posterior <b>lose entropy</b> and concentrate around a few likely values.</li>
+          <li>Two differences from ML: (1) predictions <b>average over all θ</b>, weighted by the posterior — integrating over uncertainty protects against overfitting; (2) the prior <b>shifts</b> probability toward preferred regions.</li>
+          <li>Pros: much better with <b>little data</b>. Cons: subjective prior; <b>expensive</b> with many examples.</li>
+        </ul>
+      </div>
+      <div class="card"><h3><span class="dot"></span>Bayesian linear regression (5.69–5.78)</h3>
+        <div class="math">\[ p(\mathbf y\mid\mathbf X,\mathbf w)=\mathcal N(\mathbf y;\mathbf X\mathbf w,\mathbf I),\qquad p(\mathbf w)=\mathcal N(\mathbf w;\boldsymbol\mu_0,\boldsymbol\Lambda_0) \]
+        \[ \boldsymbol\Lambda_m=\big(\mathbf X^{\top}\mathbf X+\boldsymbol\Lambda_0^{-1}\big)^{-1},\qquad\boldsymbol\mu_m=\boldsymbol\Lambda_m\big(\mathbf X^{\top}\mathbf y+\boldsymbol\Lambda_0^{-1}\boldsymbol\mu_0\big) \]</div>
+        <p>The posterior is Gaussian \(\mathcal N(\mathbf w;\boldsymbol\mu_m,\boldsymbol\Lambda_m)\). With \(\boldsymbol\mu_0=0\), \(\boldsymbol\Lambda_0=\frac1\alpha\mathbf I\): \(\boldsymbol\mu_m=(\mathbf X^\top\mathbf X+\alpha\mathbf I)^{-1}\mathbf X^\top\mathbf y\) — the same as <b>weight decay αwᵀw</b>. Extra: \(\boldsymbol\Lambda_m\) tells how uncertain each weight is. (α = 0 is not allowed: an infinitely wide prior.)</p>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Prior \(p(\theta)\)</dt><dd>Belief about θ before seeing data.</dd>
+        <dt>Likelihood \(p(\text{data}\mid\theta)\)</dt><dd>How well each θ explains the data.</dd>
+        <dt>Posterior \(p(\theta\mid\text{data})\)</dt><dd>Updated belief after seeing the data.</dd>
+        <dt>Evidence \(p(\text{data})\)</dt><dd>Normalizing constant so the posterior integrates to 1.</dd>
+        <dt>Entropy</dt><dd>How spread out (uncertain) a distribution is.</dd>
+        <dt>Beta(a, b)</dt><dd>A distribution on [0, 1]; works like a + b imaginary prior flips (a heads, b tails).</dd>
+        <dt>\(\boldsymbol\Lambda\)</dt><dd>Covariance matrix: spread and correlations of the weights.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Prior Beta(2, 2) (mild belief in a fair coin). Observe 7 heads, 3 tails.</li>
+        <li>Posterior ∝ \(\theta^{7}(1-\theta)^{3}\cdot\theta^{1}(1-\theta)^{1}=\theta^{8}(1-\theta)^{4}\) = Beta(9, 5).</li>
+        <li>Posterior mean (prediction for next flip) \(=9/(9+5)=0.643\); MAP \(=(9-1)/(9+5-2)=8/12=0.667\); MLE \(=0.7\). The prior pulls the answer toward 0.5.</li>
+      </ol></div>
+    </div>
+    <div data-widget="betaCoin"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag same">Compare</span><span><a href="ch07.html#/s-bagging">Bagging & ensembles (L6)</a> and <a href="ch07.html#/s-dropout">dropout (L6)</a>: practical ways to average over many models, in the spirit of averaging over θ.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-map" data-part="Part 2 · Bayes, dimensions, classifiers (5.6–5.7)" data-title="MAP estimation" data-stages="loss">
+  <div class="slide-head"><span class="kicker">5.6.1 · MAP estimation</span><h2>MAP: one best guess that still uses the prior</h2><div class="stages"></div></div>
+  <p class="bigidea">MAP picks the <b>peak of the posterior</b>: maximize log-likelihood + <b>log-prior</b>. A Gaussian prior on the weights turns the log-prior into a <b>weight-decay penalty</b> — less variance, more bias.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \boldsymbol\theta_{\text{MAP}}=\arg\max_{\boldsymbol\theta}p(\boldsymbol\theta\mid\mathbf x)=\arg\max_{\boldsymbol\theta}\ \log p(\mathbf x\mid\boldsymbol\theta)+\log p(\boldsymbol\theta) \]<span class="eqno">(5.79)</span>
+        \[ p(\mathbf w)=\mathcal N\big(\mathbf w;\mathbf 0,\tfrac1\lambda\mathbf I\big)\;\Rightarrow\;\log p(\mathbf w)=-\frac\lambda2\mathbf w^{\top}\mathbf w+\text{const} \]</div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>The full posterior is often <b>intractable</b>; a point estimate is a tractable approximation.</li>
+          <li>MAP keeps some Bayesian benefit: the prior adds information not in the data, which <b>reduces variance</b> at the price of <b>increased bias</b>.</li>
+          <li>Not every regularizer is a MAP prior (some are not log-probabilities; some depend on the data, which a prior can’t).</li>
+          <li>MAP gives a recipe for designing penalties: e.g. a <b>mixture of Gaussians</b> prior gives a more complex, interpretable penalty.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>MAP</dt><dd><b>M</b>aximum <b>a</b> <b>p</b>osteriori: the most probable θ after seeing the data.</dd>
+        <dt>Log-prior</dt><dd>\(\log p(\theta)\); acts as a penalty added to the log-likelihood.</dd>
+        <dt>Precision α (or λ)</dt><dd>1 / variance of the prior: bigger = stronger belief that weights are near 0.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>1-D model \(y=wx+\epsilon\), noise variance 1, prior \(w\sim\mathcal N(0,1/\alpha)\).</li>
+        <li>−log posterior \(=\frac12\sum(y-wx)^2+\frac\alpha2w^2+\text{const}\). Derivative \(=-\sum xy+w\sum x^2+\alpha w=0\).</li>
+        <li>So \(w_{\text{MAP}}=\frac{\sum xy}{\sum x^2+\alpha}\) vs. \(w_{\text{ML}}=\frac{\sum xy}{\sum x^2}\).</li>
+        <li>With \(\sum xy=3,\sum x^2=2,\alpha=1\): \(w_{\text{ML}}=1.5\), \(w_{\text{MAP}}=3/3=1.0\) — shrunk toward 0.</li>
+      </ol></div>
+    </div>
+    <div data-widget="mapRidge"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch05-1.html#/s-regularization">Weight decay (L1)</a>.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch07.html#/s-l2">L2 regularization (L6)</a> (Gaussian prior) and <a href="ch07.html#/s-l1">L1 regularization (L6)</a> (Laplace prior → sparse weights).</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-curse" data-part="Part 2 · Bayes, dimensions, classifiers (5.6–5.7)" data-title="The curse of dimensionality" data-stages="data">
+  <div class="slide-head"><span class="kicker">5.11.1 · Challenges motivating deep learning</span><h2>The curse of dimensionality</h2><div class="stages"></div></div>
+  <p class="bigidea">The number of distinct configurations grows <b>exponentially</b> with the number of input dimensions, so in high dimensions almost every region of input space has <b>no training example</b>.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <p>Simple ML algorithms work on many problems but failed on the central AI tasks (speech, object recognition) — partly because they don’t generalize in high dimensions.</p>
+        <p>Imagine cutting input space into grid cells. In low dimensions, each cell has examples: to estimate a density, count examples in the cell; to classify, take the majority class in the cell; to regress, average the targets in the cell. In high dimensions, a typical cell is <b>empty</b> — what then? Classic methods assume the answer is about the same as at the <b>nearest training point</b>.</p>
+        <p>This is a <b>statistical challenge</b>: there are far more possible configurations than training examples.</p>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Dimension d</dt><dd>Number of input features (pixels, words…).</dd>
+        <dt>Configuration</dt><dd>One combination of values of all features (one grid cell).</dd>
+        <dt>Statistical challenge</dt><dd>Too few examples compared with the number of possible inputs.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>10 bins per axis: d = 1 → 10 cells; d = 2 → 100; d = 3 → 1 000; d = 10 → \(10^{10}\).</li>
+        <li>With m = 500 examples in d = 3: chance a given cell is empty \(=(1-\frac1{1000})^{500}\approx e^{-0.5}=0.61\) → only ~39% of cells have any data.</li>
+        <li>A tiny 28×28 grey image already has 784 dimensions — far beyond any grid.</li>
+      </ol></div>
+    </div>
+    <div data-widget="curse"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag fwd">Leads to</span><span><a href="ch09.html#/s-sharing">Parameter sharing in CNNs (L10)</a>: one way deep learning beats the curse — the same small detector is reused everywhere.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-smoothness" data-part="Part 2 · Bayes, dimensions, classifiers (5.6–5.7)" data-title="Smoothness prior & why depth" data-stages="init">
+  <div class="slide-head"><span class="kicker">5.11.2 · Local constancy and smoothness</span><h2>The smoothness prior is not enough — enter deep learning</h2><div class="stages"></div></div>
+  <p class="bigidea">“The function doesn’t change much in a small region” only lets you distinguish about <b>as many regions as you have examples</b>. Deep learning assumes data come from a <b>composition of factors</b>, giving an exponential gain.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>To generalize, an algorithm needs <b>prior beliefs</b>. The most common implicit one is the <b>smoothness (local constancy) prior</b>: the learned function shouldn’t change much within a small region.</li>
+          <li>Many simple algorithms (nearest neighbour, kernel machines, decision trees) rely <b>only</b> on it, so they need at least one example per region — they fail to scale to AI-level tasks.</li>
+          <li>Core idea of deep learning: the data were generated by a <b>composition of factors / features</b>, possibly at multiple levels of a hierarchy. This mild assumption gives an <b>exponential</b> relationship between the number of examples and the number of regions that can be distinguished — countering the exponential curse.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Smoothness / local constancy prior</dt><dd>Nearby inputs should get similar outputs.</dd>
+        <dt>Nearest neighbour</dt><dd>Predict the label of the closest training example.</dd>
+        <dt>Distributed representation</dt><dd>Describe an input by many features at once (e.g. “has glasses”, “is smiling”…), so combinations cover many regions.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Checkerboard with 8×8 = 64 regions: a local method needs examples in all 64 regions (in practice many more).</li>
+        <li>With 20 learned binary features, combinations can distinguish \(2^{20}\approx1\,000\,000\) regions while learning only 20 features from data.</li>
+        <li>That exponential gap (64 examples per 64 regions vs. ~20 features for a million regions) is the promise of deep, distributed representations.</li>
+      </ol></div>
+    </div>
+    <div data-widget="knnSmooth"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch05-1.html#/s-nfl">No free lunch (L1)</a>: we must choose assumptions that match the real world.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch06-1.html#/s-uat">Depth & universal approximation (L4)</a>: deep networks can represent such compositions with far fewer units.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-prob-sl" data-part="Part 2 · Bayes, dimensions, classifiers (5.6–5.7)" data-title="Logistic regression" data-stages="loss,update">
+  <div class="slide-head"><span class="kicker">5.7.1 · Probabilistic supervised learning</span><h2>From linear regression to logistic regression</h2><div class="stages"></div></div>
+  <p class="bigidea">For two classes, predict a <b>probability</b>: squash \(\boldsymbol\theta^\top\mathbf x\) into (0, 1) with the <b>sigmoid</b>. There is no closed-form solution, so we minimize the <b>negative log-likelihood</b> with <b>gradient descent</b>.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ p(y\mid\mathbf x;\boldsymbol\theta)=\mathcal N\big(y;\boldsymbol\theta^{\top}\mathbf x,\mathbf I\big)\quad\text{(linear regression)} \]<span class="eqno">(5.80)</span>
+        \[ p(y=1\mid\mathbf x;\boldsymbol\theta)=\sigma\big(\boldsymbol\theta^{\top}\mathbf x\big),\qquad\sigma(z)=\frac{1}{1+e^{-z}} \]<span class="eqno">(5.81) logistic regression</span>
+        \[ \text{NLL}=-\frac1m\sum_i\Big[y^{(i)}\log\sigma(z^{(i)})+(1-y^{(i)})\log\big(1-\sigma(z^{(i)})\big)\Big],\quad\frac{\partial\,\text{NLL}}{\partial\boldsymbol\theta}=\frac1m\sum_i\big(\sigma(z^{(i)})-y^{(i)}\big)\mathbf x^{(i)} \]</div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Most supervised learning = estimating \(p(y\mid\mathbf x)\) by maximum likelihood for some parametric family.</li>
+          <li>With 2 classes we only need \(p(y=1\mid\mathbf x)\) (the other is 1 minus it). A probability must be in (0, 1), so wrap the linear function in the sigmoid.</li>
+          <li>Strange name: “regression”, but used for classification.</li>
+          <li>The same strategy works for essentially <b>any</b> supervised problem: write a family of conditional distributions for your output type, then minimize the NLL.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Sigmoid σ(z)</dt><dd>S-shaped squashing function; σ(0) = 0.5, σ(large) → 1, σ(very negative) → 0.</dd>
+        <dt>Logit z</dt><dd>The linear score \(\boldsymbol\theta^\top\mathbf x\) before squashing.</dd>
+        <dt>NLL</dt><dd>Negative log-likelihood: the loss we minimize (binary cross-entropy).</dd>
+        <dt>Closed form</dt><dd>A direct formula for the answer (like the normal equations) — logistic regression has none.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>w = 1.5, b = −1, input x = 2: \(z=1.5\cdot2-1=2\).</li>
+        <li>\(\sigma(2)=1/(1+e^{-2})=1/(1+0.135)=0.881\).</li>
+        <li>If y = 1: loss \(=-\ln0.881=0.127\) (confident & right = small). If y = 0: loss \(=-\ln(1-0.881)=-\ln0.119=2.13\) (confident & wrong = big).</li>
+        <li>Gradient for this example if y = 1: \((\sigma(z)-y)x=(0.881-1)\cdot2=-0.238\) → gradient descent <b>increases</b> w a little.</li>
+      </ol></div>
+    </div>
+    <div data-widget="logreg"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag fwd">Leads to</span><span><a href="ch06-1.html#/s-output-sigmoid">Sigmoid output units (L4)</a> and <a href="ch06-1.html#/s-softmax">softmax for many classes (L4)</a>.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch04-3.html#/s-gd">Gradient descent (L3)</a>: the general algorithm used here.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-gen-disc" data-part="Part 2 · Bayes, dimensions, classifiers (5.6–5.7)" data-title="Generative vs. discriminative" data-stages="init">
+  <div class="slide-head"><span class="kicker">Generative vs. discriminative models</span><h2>Three ways to build a classifier</h2><div class="stages"></div></div>
+  <p class="bigidea"><b>Generative</b>: model how each class <em>produces</em> inputs, then use Bayes. <b>Discriminative</b>: model the class probabilities given the input directly. <b>Discriminant function</b>: map input straight to a label.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ p(\mathcal C_k\mid\mathbf x)=\frac{p(\mathbf x\mid\mathcal C_k)\,p(\mathcal C_k)}{p(\mathbf x)},\qquad p(\mathbf x)=\sum_k p(\mathbf x\mid\mathcal C_k)\,p(\mathcal C_k) \]</div>
+      <div class="compare">
+        <div style="border-top:3px solid var(--s2)"><b>(a) Generative</b>Learn \(p(\mathbf x\mid\mathcal C_k)\) and \(p(\mathcal C_k)\) (or the joint \(p(\mathbf x,\mathcal C_k)\)). Can <b>sample</b> new x, and gives \(p(\mathbf x)\) for <b>outlier / novelty detection</b>. Most demanding: high-dimensional x needs lots of data.</div>
+        <div style="border-top:3px solid var(--s3)"><b>(b) Discriminative</b>Learn \(p(\mathcal C_k\mid\mathbf x)\) directly (e.g. logistic regression). Uses data and compute only for what decisions need.</div>
+        <div style="border-top:3px solid var(--s7)"><b>(c) Discriminant function</b>Learn \(f(\mathbf x)\) that outputs the label directly (e.g. f = 0 → class 1, f = 1 → class 2). No probabilities at all.</div>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Class-conditional density \(p(\mathbf x\mid\mathcal C_k)\)</dt><dd>How inputs of class k are distributed.</dd>
+        <dt>Class prior \(p(\mathcal C_k)\)</dt><dd>How common class k is before looking at x.</dd>
+        <dt>Posterior \(p(\mathcal C_k\mid\mathbf x)\)</dt><dd>Probability of class k for this particular input.</dd>
+        <dt>Decision theory</dt><dd>Rules for turning probabilities into decisions (e.g. pick the most probable class).</dd>
+        <dt>Novelty detection</dt><dd>Flagging inputs with low \(p(\mathbf x)\), where predictions may be unreliable.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Priors \(p(\mathcal C_1)=p(\mathcal C_2)=0.5\); at some x: \(p(\mathbf x\mid\mathcal C_1)=0.1\), \(p(\mathbf x\mid\mathcal C_2)=0.3\).</li>
+        <li>\(p(\mathbf x)=0.5\cdot0.1+0.5\cdot0.3=0.05+0.15=0.2\).</li>
+        <li>\(p(\mathcal C_2\mid\mathbf x)=0.15/0.2=0.75\), \(p(\mathcal C_1\mid\mathbf x)=0.25\) → decide class 2.</li>
+      </ol></div>
+    </div>
+    <div data-widget="genDisc"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag fwd">Leads to</span><span><a href="ch06-1.html#/s-softmax">Softmax classifiers (L4)</a>: deep classifiers are discriminative models of \(p(y\mid\mathbf x)\).</span></li>
+    <li><span class="tag back">Builds on</span><span><a href="ch05-1.html#/s-experience">p(y|x) from p(x, y) (L1)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-summary" data-part="Wrap-up" data-title="Summary: how it all connects" data-stages="init,loss,final">
+  <div class="slide-head"><span class="kicker">Wrap-up</span><h2>Summary: how it all connects</h2><div class="stages"></div></div>
+  <p class="bigidea">Estimators are random → judge them by <b>bias</b> and <b>variance</b>. <b>Maximum likelihood</b> gives the loss; a <b>prior</b> (MAP) gives the regularizer. High dimensions break local methods, which motivates <b>deep</b> models.</p>
+  <div class="card" style="padding:0;overflow:hidden"><div class="scroll-x"><table class="data-table">
+    <thead><tr><th>Concept</th><th>Meaning</th><th>Formula</th><th>Used later in</th></tr></thead>
+    <tbody>
+      <tr><td>Bias</td><td>Systematic error</td><td>\(\mathbb E\hat\theta-\theta\)</td><td>L6 regularization trade-offs</td></tr>
+      <tr><td>Variance / SE</td><td>Random wobble of an estimate</td><td>\(\text{SE}(\hat\mu)=\sigma/\sqrt m\)</td><td>L7 minibatch size</td></tr>
+      <tr><td>MSE decomposition</td><td>Total error</td><td>bias² + var</td><td>L6, U-curve of L1</td></tr>
+      <tr><td>Maximum likelihood</td><td>Make data most probable</td><td>\(\arg\max\sum\log p\)</td><td>L4 cost functions</td></tr>
+      <tr><td>Cross-entropy / KL</td><td>Distance data ↔ model</td><td>\(-\mathbb E\log p_{\text{model}}\)</td><td>L4 softmax loss</td></tr>
+      <tr><td>MSE = Gaussian NLL</td><td>Why squared error</td><td>(5.65)</td><td>L4 linear outputs</td></tr>
+      <tr><td>Bayes / posterior</td><td>Distribution over θ</td><td>prior × likelihood</td><td>L6 ensembles</td></tr>
+      <tr><td>MAP = weight decay</td><td>Prior as penalty</td><td>\(\log p(\mathbf x|\theta)+\log p(\theta)\)</td><td>L6 L2/L1</td></tr>
+      <tr><td>Curse of dimensionality</td><td>Exponentially many regions</td><td>binsᵈ cells</td><td>L10 CNN priors</td></tr>
+      <tr><td>Logistic regression</td><td>Linear classifier with probabilities</td><td>\(\sigma(\theta^\top\mathbf x)\)</td><td>L4 sigmoid outputs</td></tr>
+    </tbody>
+  </table></div></div>
+  <div class="row3" style="margin-top:16px">
+    <div class="card plain"><h3><span class="dot"></span>Remember</h3><p>Loss = negative log-likelihood. Regularizer ≈ log-prior. Generalization ≈ bias² + variance.</p></div>
+    <div class="card plain"><h3><span class="dot"></span>Next lecture</h3><p><a href="ch04-3.html">Numerical optimization &amp; SGD</a>: now that we know <em>what</em> to minimize, <em>how</em> do we minimize it?</p></div>
+    <div class="card fit"><h3><span class="dot"></span>Check yourself</h3><p>Eleven quiz questions with explanations.</p><button class="btn primary" type="button" data-goto="s-quiz" style="margin-top:6px">Take the quiz →</button></div>
+  </div>
+</section>
+
+<section class="slide" id="s-quiz" data-part="Wrap-up" data-title="Check yourself (quiz)">
+  <div class="slide-head"><span class="kicker">Wrap-up</span><h2>Check yourself</h2><p class="lede">Pick an answer to see whether it is right and why.</p></div>
+  <div data-widget="quiz"></div>
+  <footer class="credits">Study notes for Deep Learning, chapter 5.4–5.7 (and 5.11). Equation numbers follow Goodfellow, Bengio &amp; Courville, <em>Deep Learning</em> (MIT Press, 2016). Explanations, diagrams and demos are original.</footer>
+</section>
+
+</main>
+</body>
+</html>

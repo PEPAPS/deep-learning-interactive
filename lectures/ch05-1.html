@@ -1,0 +1,594 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Machine Learning Basics I</title>
+<meta name="description" content="Interactive notes for Deep Learning chapter 5.1–5.3: learning algorithms (task, performance, experience), linear regression, capacity, overfitting and underfitting, no free lunch, regularization, hyper-parameters, validation and cross-validation.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232a78d6'/%3E%3Cpath d='M6 9c5 0 6 14 10 14s5-14 10-14' fill='none' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<link rel="stylesheet" href="../css/style.css?v=9">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script defer src="../js/core.js?v=9"></script>
+<script defer src="../js/course.js?v=9"></script>
+<script defer src="../js/quiz.js?v=9"></script>
+<script defer src="../js/lectures/ch05-1.js?v=9"></script>
+</head>
+<body data-page="lecture" data-lecture="ch05-1">
+<script>
+window.TOPICS = {
+  data: [['s-what-learning', 'Task, Performance, Experience'], ['s-tasks', 'Kinds of tasks'], ['s-performance', 'Choosing the performance measure'], ['s-experience', 'Datasets & the design matrix'], ['s-generalization', 'i.i.d. assumptions']],
+  init: [['s-capacity', 'Choosing the hypothesis space (capacity)'], ['s-nfl', 'No free lunch: build in assumptions']],
+  loss: [['s-linreg', 'Mean squared error'], ['s-regularization', 'Adding a weight-decay penalty']],
+  update: [['s-linreg', 'Normal equations: the closed-form solution']],
+  final: [['s-generalization', 'Test (generalization) error'], ['s-capacity-curve', 'Diagnosing under/overfitting'], ['s-hyper', 'Validation set for hyper-parameters'], ['s-cv', 'k-fold cross-validation']]
+};
+</script>
+
+<main class="deck" id="deck">
+
+<!-- ============================================================ -->
+<section class="slide" id="s-title" data-part="Start here" data-title="Welcome: what is learning?">
+  <div class="slide-head">
+    <span class="kicker">Lecture 1 · Chapter 5.1 – 5.3</span>
+    <h1>Machine Learning Basics I</h1>
+    <p class="lede">Before we build deep networks we need the vocabulary of machine learning: what a learning problem is, how we measure success, our very first learning algorithm (linear regression), and the central challenge of the whole course — <b>doing well on data we have never seen</b>.</p>
+  </div>
+  <div class="road">
+    <div class="card big">
+      <span class="kicker">Part 1 · 5.1</span>
+      <h4>Learning algorithms</h4>
+      <ol><li>Task T, performance P, experience E</li><li>The zoo of tasks</li><li>Datasets and the design matrix</li><li>Example: linear regression</li></ol>
+      <button class="btn primary go" type="button" data-goto="s-what-learning">Start →</button>
+    </div>
+    <div class="card big">
+      <span class="kicker">Part 2 · 5.2 – 5.3</span>
+      <h4>Generalization</h4>
+      <ol><li>Training vs. test error</li><li>Capacity, overfitting, underfitting</li><li>No free lunch &amp; regularization</li><li>Hyper-parameters, validation, cross-validation</li></ol>
+      <button class="btn primary go" type="button" data-goto="s-generalization">Jump to Part 2 →</button>
+    </div>
+  </div>
+  <div class="howto">
+    <div><b>Navigate</b>Use <kbd>←</kbd> <kbd>→</kbd> or the buttons at the bottom. The menu lists every slide and every lecture.</div>
+    <div><b>Read the boxes</b>Each slide has: Key idea · In plain words · Terms · Calculation step by step · Connections.</div>
+    <div><b>Play</b>Every demo is live: move sliders and watch the numbers in the grey calculation panels change.</div>
+    <div><b>See the big picture</b>The chips under each title show which training step the idea belongs to.</div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-loop" data-part="Start here" data-title="Where this lecture fits" data-stages="data,init,loss,update,final">
+  <div class="slide-head">
+    <span class="kicker">Start here</span>
+    <h2>Where this lecture fits in training</h2>
+    <div class="stages"></div>
+  </div>
+  <p class="bigidea">This lecture defines the <b>first and last steps</b> of every training run: what problem we solve and with which data (step 1), and how we check that the model works on new data (step 8). Linear regression gives a first complete example of the loop.</p>
+  <div class="stack">
+    <div data-widget="loop"></div>
+    <div class="row3">
+      <div class="card plain"><h3><span class="dot"></span>Step 1 · the problem</h3><p>Every project starts by fixing the <b>task</b>, the <b>performance measure</b> and the <b>data</b>. The data is split into training, validation and test parts.</p></div>
+      <div class="card plain"><h3><span class="dot"></span>Steps 2–7 · fitting</h3><p>Choose a model family (its <b>capacity</b>), a loss (here mean squared error, maybe plus weight decay) and minimize it. For linear regression the minimum is found in one formula.</p></div>
+      <div class="card plain"><h3><span class="dot"></span>Step 8 · generalization</h3><p>What we really care about is the <b>test error</b>. Validation data and cross-validation tell us which capacity / hyper-parameters generalize best.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-what-learning" data-part="Part 1 · Learning algorithms (5.1)" data-title="What is learning? T, P, E" data-stages="data">
+  <div class="slide-head">
+    <span class="kicker">5.1 · Learning algorithms</span>
+    <h2>What does it mean to “learn”?</h2>
+    <div class="stages"></div>
+  </div>
+  <p class="bigidea">A program <b>learns</b> if it gets <b>better at a task</b> (as measured by some score) the <b>more data / experience</b> it gets.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <p>A <b>machine learning algorithm</b> is an algorithm that is able to learn from data. Tom Mitchell (1997) gave the classic definition:</p>
+        <p style="padding-left:12px;border-left:3px solid var(--border)">“A computer program is said to learn from <b>experience E</b> with respect to some class of <b>tasks T</b> and <b>performance measure P</b>, if its performance at tasks in T, as measured by P, improves with experience E.”</p>
+        <p>Note: <b>learning is not the task</b>. If we want a robot to walk, <em>walking</em> is the task; learning is just how the robot gets the ability to walk.</p>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Task T</dt><dd>What the system should do with an example, e.g. “decide whether this e-mail is spam”.</dd>
+        <dt>Example</dt><dd>One object or event described by measured numbers called features, written as a vector \(\mathbf x\in\mathbb R^n\) (e.g. the pixel values of one image).</dd>
+        <dt>Feature \(x_i\)</dt><dd>One measured number of the example, e.g. the brightness of pixel i, or the petal length of a flower.</dd>
+        <dt>Performance measure P</dt><dd>A number that tells how well the task is done, e.g. accuracy.</dd>
+        <dt>Experience E</dt><dd>What the algorithm is allowed to see while learning — usually a dataset of examples.</dd>
+      </dl></div>
+      <div class="card analogy"><h3><span class="dot"></span>Analogy</h3><p>A student learning to cook: T = cook pasta, P = how tasty the guests rate it (1–10), E = the number of times they practised. If the ratings go up with practice, the student is learning.</p></div>
+    </div>
+    <div data-widget="tpe"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections to other lectures</h3><ul class="conn">
+    <li><span class="tag fwd">Leads to</span><span><a href="ch06-1.html#/s-ffn">Feedforward networks (L4)</a>: a neural network is just a very flexible way to represent the function that performs task T.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch08-1.html#/s-surrogate">Surrogate losses (L7)</a>: the performance measure P (e.g. accuracy) is often impossible to optimize directly, so we train on a different, smooth loss.</span></li>
+  </ul></div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-tasks" data-part="Part 1 · Learning algorithms (5.1)" data-title="Kinds of tasks" data-stages="data">
+  <div class="slide-head">
+    <span class="kicker">5.1.1 · The task, T</span>
+    <h2>The zoo of machine learning tasks</h2>
+    <div class="stages"></div>
+  </div>
+  <p class="bigidea">Tasks are described by <b>what goes in</b> and <b>what must come out</b>. The output type (a class, a number, a sequence, a probability…) decides which model and which loss we will use later.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <p>The lecture lists eleven classic tasks. Most real applications are one of them, or a mix:</p>
+        <ul>
+          <li><b>Classification</b> — handwriting, faces, objects, spam, music genre, recommendation.</li>
+          <li><b>Regression</b> — prices, insurance claims, weather.</li>
+          <li><b>Transcription &amp; translation</b> — speech → text, photo of text → text, English → French.</li>
+          <li><b>Structured output</b> — parsing, segmentation of every pixel, image captioning.</li>
+          <li><b>Anomaly detection, synthesis, imputation, denoising, density estimation.</b></li>
+        </ul>
+        <p>Density estimation is special: if you know \(p(\mathbf x)\) you can, in principle, solve the others, e.g. fill in a missing value with \(p(x_i\mid\mathbf x_{-i})\). In practice those computations are often <b>intractable</b> (too expensive to compute).</p>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>\(f:\mathbb R^n\to\{1,\dots,k\}\)</dt><dd>A classifier: a function that takes n input numbers and returns one of k category codes.</dd>
+        <dt>\(f:\mathbb R^n\to\mathbb R\)</dt><dd>A regressor: returns one real number.</dd>
+        <dt>Structured output</dt><dd>The output has several parts that must fit together (the words of a caption must form a sentence).</dd>
+        <dt>Marginalizing</dt><dd>Summing (or integrating) a probability over the variables you don’t know, to get the probability of the ones you care about.</dd>
+        <dt>\(p(x_i\mid\mathbf x_{-i})\)</dt><dd>Probability of feature i given all the other features (\(-i\) means “all except i”).</dd>
+        <dt>Intractable</dt><dd>Possible in theory, but far too expensive to compute in practice.</dd>
+      </dl></div>
+    </div>
+    <div data-widget="taskExplorer"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections to other lectures</h3><ul class="conn">
+    <li><span class="tag fwd">Leads to</span><span><a href="ch06-1.html#/s-output-sigmoid">Output units (L4)</a>: the task decides the last layer — linear for regression, sigmoid for yes/no, softmax for k classes.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch09.html#/s-conv-op">Convolutional nets (L10)</a> for images and <a href="ch10.html#/s-seq">recurrent nets (L11)</a> for sequences (transcription, translation, captioning).</span></li>
+  </ul></div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-performance" data-part="Part 1 · Learning algorithms (5.1)" data-title="The performance measure P" data-stages="data,final">
+  <div class="slide-head">
+    <span class="kicker">5.1.2 · The performance measure, P</span>
+    <h2>Measuring success</h2>
+    <div class="stages"></div>
+  </div>
+  <p class="bigidea">P must be measured on a <b>test set</b> of data the model never saw, and choosing P is a real design decision — different measures can prefer different models.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Classification / transcription: <b>accuracy</b> = fraction of correct outputs, or equivalently the <b>error rate</b> = fraction of wrong outputs (also called the expected <b>0-1 loss</b>).</li>
+          <li>Density estimation: accuracy makes no sense; use the <b>average log-probability</b> the model gives to test examples (higher = better).</li>
+          <li>Always evaluate on a separate <b>test set</b>: we care about performance in the real world, on new data.</li>
+        </ul>
+        <p>Hard questions: should a transcription system get partial credit for a half-correct sentence? In regression, is it worse to make <b>many medium mistakes</b> or <b>a few huge ones</b>? Sometimes the ideal measure is also <b>impractical to compute</b>, so we use an approximation.</p>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Accuracy</dt><dd>\(\frac{\#\text{correct}}{\#\text{examples}}\).</dd>
+        <dt>Error rate</dt><dd>\(1-\text{accuracy}\) = \(\frac{\#\text{wrong}}{\#\text{examples}}\).</dd>
+        <dt>0-1 loss</dt><dd>Loss of 0 for a correct answer and 1 for a wrong one; its average is the error rate.</dd>
+        <dt>Log-probability</dt><dd>\(\log p_{\text{model}}(\mathbf x)\): how much probability the model gave to what actually happened. Higher (closer to 0) is better.</dd>
+        <dt>Test set</dt><dd>Examples kept aside and never used for training or for choosing the model.</dd>
+        <dt>MAE / MSE</dt><dd>Mean absolute error \(\frac1m\sum|e_i|\) and mean squared error \(\frac1m\sum e_i^2\) for regression.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>A spam filter is tested on <b>200</b> new e-mails and gets <b>184</b> right.</li>
+        <li>Accuracy \(=184/200=0.92\) (92%). Error rate \(=1-0.92=0.08\) (16 wrong out of 200).</li>
+        <li>A density model gives three test points probabilities 0.5, 0.25 and 0.125. Average log-probability (natural log): \(\frac{\ln 0.5+\ln 0.25+\ln 0.125}{3}=\frac{-0.693-1.386-2.079}{3}=-1.386\). A better model would get a number closer to 0.</li>
+      </ol></div>
+    </div>
+    <div data-widget="metricChoice"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections to other lectures</h3><ul class="conn">
+    <li><span class="tag fwd">Leads to</span><span><a href="ch05-4.html#/s-mle">Maximum likelihood (L2)</a>: maximizing the average log-probability is exactly how most models are trained.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch08-1.html#/s-surrogate">Surrogate losses (L7)</a>: the 0-1 loss has zero gradient almost everywhere, so networks are trained with a smooth substitute such as cross-entropy.</span></li>
+  </ul></div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-experience" data-part="Part 1 · Learning algorithms (5.1)" data-title="Experience: datasets" data-stages="data">
+  <div class="slide-head">
+    <span class="kicker">5.1.3 · The experience, E</span>
+    <h2>Experience: supervised, unsupervised and more</h2>
+    <div class="stages"></div>
+  </div>
+  <p class="bigidea">Supervised learning learns \(p(y\mid\mathbf x)\) from examples <b>with labels</b>; unsupervised learning learns about \(p(\mathbf x)\) from examples <b>without labels</b>. The dataset is usually stored as a <b>design matrix</b>.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li><b>Unsupervised:</b> see many examples of \(\mathbf x\); learn the distribution \(p(\mathbf x)\) or useful structure (e.g. clustering).</li>
+          <li><b>Supervised:</b> see pairs \((\mathbf x, y)\) — a “teacher” provides the label \(y\); learn to predict \(y\) from \(\mathbf x\), usually by estimating \(p(y\mid\mathbf x)\).</li>
+          <li><b>Semi-supervised:</b> only some examples have labels. <b>Multi-instance:</b> a whole bag of examples is labelled (“contains a cat”), not the individual members.</li>
+          <li><b>Reinforcement learning:</b> no fixed dataset — the agent acts, the environment responds, so there is a feedback loop.</li>
+        </ul>
+        <p>The line between supervised and unsupervised is blurry. The two formulas below convert one into the other.</p>
+      </div>
+      <div class="math">\[ p(\mathbf x)=\prod_{i=1}^{n}p(x_i\mid x_1,\dots,x_{i-1}) \]<span class="eqno">(5.1) unsupervised → n supervised problems</span>
+        \[ p(y\mid\mathbf x)=\frac{p(\mathbf x,y)}{\sum_{y'}p(\mathbf x,y')} \]<span class="eqno">(5.2) supervised from a joint (unsupervised) model</span></div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Dataset</dt><dd>A collection of examples (also called data points).</dd>
+        <dt>Label / target \(y\)</dt><dd>The correct answer attached to an example (e.g. the iris species).</dd>
+        <dt>Design matrix \(\mathbf X\in\mathbb R^{m\times n}\)</dt><dd>Table with one example per <b>row</b> (m rows) and one feature per <b>column</b> (n columns). Iris: \(m=150,n=4\); \(X_{i,1}\) is the sepal length of plant i.</dd>
+        <dt>Label vector \(\mathbf y\)</dt><dd>\(y_i\) is the label of example i.</dd>
+        <dt>Set notation \(\{\mathbf x^{(1)},\dots,\mathbf x^{(m)}\}\)</dt><dd>Used when examples have different sizes (photos of different widths) and can’t be rows of one matrix.</dd>
+        <dt>Chain rule of probability</dt><dd>A joint probability equals a product of conditional probabilities, one variable at a time (formula 5.1).</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Formula 5.2 with numbers: suppose a joint model gives for one flower \(\mathbf x\): \(p(\mathbf x,\text{setosa})=0.02\), \(p(\mathbf x,\text{versicolor})=0.06\), \(p(\mathbf x,\text{virginica})=0.12\).</li>
+        <li>Denominator: \(0.02+0.06+0.12=0.20\).</li>
+        <li>So \(p(\text{virginica}\mid\mathbf x)=0.12/0.20=0.6\), \(p(\text{versicolor}\mid\mathbf x)=0.3\), \(p(\text{setosa}\mid\mathbf x)=0.1\) — a supervised prediction obtained from an unsupervised (joint) model.</li>
+      </ol></div>
+    </div>
+    <div data-widget="designMatrix"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections to other lectures</h3><ul class="conn">
+    <li><span class="tag fwd">Leads to</span><span><a href="ch05-4.html#/s-prob-sl">Probabilistic supervised learning (L2)</a> and <a href="ch05-4.html#/s-gen-disc">generative vs. discriminative models (L2)</a>: modelling \(p(y\mid\mathbf x)\) directly vs. modelling \(p(\mathbf x,y)\).</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch08-1.html#/s-minibatch">Minibatches (L7)</a>: during training we read random groups of rows of the design matrix.</span></li>
+  </ul></div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-linreg" data-part="Part 1 · Learning algorithms (5.1)" data-title="Example: linear regression" data-stages="loss,update">
+  <div class="slide-head">
+    <span class="kicker">5.1.4 · Example</span>
+    <h2>Our first learning algorithm: linear regression</h2>
+    <div class="stages"></div>
+  </div>
+  <p class="bigidea">Predict with a weighted sum \(\hat y=\mathbf w^\top\mathbf x+b\), measure the <b>mean squared error</b>, and find the weights that make it smallest by setting its gradient to zero — the <b>normal equations</b>.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li><b>T:</b> predict a number \(y\) from \(\mathbf x\). <b>Model:</b> \(\hat y=\mathbf w^\top\mathbf x\). Each weight \(w_i\) says how much feature \(x_i\) pushes the prediction up (positive) or down (negative); weight 0 = feature ignored.</li>
+          <li><b>P:</b> mean squared error on a test set.</li>
+          <li><b>E / learning:</b> choose \(\mathbf w\) to minimize the MSE on the <b>training set</b>.</li>
+        </ul>
+      </div>
+      <div class="math">\[ \hat y=\mathbf w^{\top}\mathbf x \]<span class="eqno">(5.3)</span>
+        \[ \text{MSE}_{\text{test}}=\frac1m\sum_i\big(\hat{\mathbf y}^{(\text{test})}-\mathbf y^{(\text{test})}\big)_i^2=\frac1m\big\|\hat{\mathbf y}^{(\text{test})}-\mathbf y^{(\text{test})}\big\|_2^2 \]<span class="eqno">(5.4–5.5)</span>
+        \[ \nabla_{\mathbf w}\tfrac1m\|\mathbf X\mathbf w-\mathbf y\|_2^2=0\;\Rightarrow\;2\mathbf X^{\top}\mathbf X\mathbf w-2\mathbf X^{\top}\mathbf y=0\;\Rightarrow\;\mathbf w=(\mathbf X^{\top}\mathbf X)^{-1}\mathbf X^{\top}\mathbf y \]<span class="eqno">(5.6–5.12) normal equations</span></div>
+      <div class="card"><h3><span class="dot"></span>The bias (intercept) b</h3><p>With \(\hat y=\mathbf w^\top\mathbf x+b\) the line need not pass through the origin (an <b>affine</b> function). Trick: add a feature that is always 1 — its weight plays the role of b. Careful: this “bias parameter” is <b>not</b> the statistical bias of an estimator (next lecture).</p></div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>\(\hat y\)</dt><dd>“y-hat”: the model’s prediction (y is the true value).</dd>
+        <dt>\(\mathbf w^\top\mathbf x\)</dt><dd>Dot product \(w_1x_1+\dots+w_nx_n\).</dd>
+        <dt>\(\|\mathbf v\|_2^2\)</dt><dd>Squared Euclidean length \(v_1^2+\dots+v_m^2\). So the MSE grows with the distance between predictions and targets.</dd>
+        <dt>Gradient \(\nabla_{\mathbf w}\)</dt><dd>Vector of slopes of the error w.r.t. each weight; at the minimum of a bowl it is zero.</dd>
+        <dt>Normal equations</dt><dd>The linear system \(\mathbf X^\top\mathbf X\mathbf w=\mathbf X^\top\mathbf y\); solving it <em>is</em> the learning algorithm.</dd>
+        <dt>Affine</dt><dd>Linear plus a constant (\(\mathbf w^\top\mathbf x+b\)). The course often just says “linear”.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step (3 points)</h3><ol class="calc">
+        <li>Data: \(x=(1,2,3)\), \(y=(2,3,5)\). Add the column of 1s: \(\mathbf X=\begin{bmatrix}1&1\\1&2\\1&3\end{bmatrix}\), unknowns \((b,w)\).</li>
+        <li>\(\mathbf X^\top\mathbf X=\begin{bmatrix}3&6\\6&14\end{bmatrix}\) (3 points, \(\sum x=6\), \(\sum x^2=14\)); \(\mathbf X^\top\mathbf y=\begin{bmatrix}10\\23\end{bmatrix}\) (\(\sum y=10\), \(\sum xy=2+6+15=23\)).</li>
+        <li>Inverse of a 2×2: determinant \(3\cdot14-6\cdot6=6\), so \((\mathbf X^\top\mathbf X)^{-1}=\frac16\begin{bmatrix}14&-6\\-6&3\end{bmatrix}\).</li>
+        <li>\(b=\frac{14\cdot10-6\cdot23}{6}=\frac{2}{6}=0.333\), \(\;w=\frac{-6\cdot10+3\cdot23}{6}=\frac{9}{6}=1.5\).</li>
+        <li>Predictions 1.833, 3.333, 4.833 → errors −0.167, 0.333, −0.167 → MSE \(=\frac{0.0278+0.1111+0.0278}{3}=0.056\). No other line has a smaller MSE.</li>
+      </ol></div>
+    </div>
+    <div data-widget="linreg"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections to other lectures</h3><ul class="conn">
+    <li><span class="tag fwd">Leads to</span><span><a href="ch05-4.html#/s-cond-ll">Linear regression as maximum likelihood (L2)</a>: minimizing MSE = maximizing likelihood under Gaussian noise.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch04-3.html#/s-least-squares">Least squares by gradient descent (L3)</a>: when \(\mathbf X^\top\mathbf X\) is too big to invert, we walk downhill instead.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch06-1.html#/s-output-linear">Linear output units (L4)</a>: the last layer of a regression network is exactly this model.</span></li>
+  </ul></div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-generalization" data-part="Part 2 · Generalization (5.2–5.3)" data-title="Generalization & i.i.d." data-stages="data,final">
+  <div class="slide-head">
+    <span class="kicker">5.2 · Capacity, overfitting and underfitting</span>
+    <h2>Generalization: the central challenge</h2>
+    <div class="stages"></div>
+  </div>
+  <p class="bigidea">Optimization only asks for a small <b>training error</b>. Machine learning also wants a small <b>test error</b>. Two goals: <b>(1) make the training error small</b>, and <b>(2) make the gap between training and test error small</b>.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <p><b>Generalization</b> = performing well on new, previously unseen inputs. We train by lowering the training error, but we are judged by the <b>generalization (test) error</b>: the expected error on a new input.</p>
+        <p>How can the training set tell us anything about the test set? Only if we assume they come from the same process: the <b>i.i.d. assumptions</b> — examples are <b>independent</b> of each other, and training and test examples are <b>identically distributed</b>, drawn from the same data-generating distribution \(p_{\text{data}}\).</p>
+        <p>For a model fixed in advance, expected training error = expected test error. But we <em>choose</em> the parameters using the training set, so the expected test error is <b>≥</b> the expected training error.</p>
+      </div>
+      <figure class="figure">
+        <svg viewBox="0 0 520 170" role="img" aria-label="One data-generating distribution produces both training and test sets">
+          <rect x="185" y="10" width="150" height="44" rx="10" fill="none" stroke="currentColor" stroke-width="2"/>
+          <text x="260" y="30" text-anchor="middle" font-size="13" font-weight="700" fill="currentColor">p_data(x, y)</text>
+          <text x="260" y="46" text-anchor="middle" font-size="11" fill="currentColor" opacity=".7">data-generating distribution</text>
+          <path d="M230 56 L120 100" stroke="currentColor" stroke-width="2" marker-end="url(#ah)"/><path d="M290 56 L400 100" stroke="currentColor" stroke-width="2" marker-end="url(#ah)"/>
+          <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>
+          <rect x="40" y="102" width="170" height="54" rx="10" style="fill:var(--s1);stroke:var(--s1)" fill-opacity=".18"/>
+          <text x="125" y="124" text-anchor="middle" font-size="13" font-weight="700" fill="currentColor">training set</text>
+          <text x="125" y="142" text-anchor="middle" font-size="11" fill="currentColor">used to pick the weights</text>
+          <rect x="310" y="102" width="170" height="54" rx="10" style="fill:var(--s2);stroke:var(--s2)" fill-opacity=".18"/>
+          <text x="395" y="124" text-anchor="middle" font-size="13" font-weight="700" fill="currentColor">test set</text>
+          <text x="395" y="142" text-anchor="middle" font-size="11" fill="currentColor">only for the final score</text>
+        </svg>
+        <figcaption>Both sets are independent samples from the same distribution — that is the only reason the training set can teach us about the test set.</figcaption>
+      </figure>
+    </div>
+    <div class="stack">
+      <div class="math">\[ \text{train:}\ \frac{1}{m^{(\text{train})}}\big\|\mathbf X^{(\text{train})}\mathbf w-\mathbf y^{(\text{train})}\big\|_2^2 \qquad \text{test:}\ \frac{1}{m^{(\text{test})}}\big\|\mathbf X^{(\text{test})}\mathbf w-\mathbf y^{(\text{test})}\big\|_2^2 \]<span class="eqno">(5.14–5.15) we minimize the first, but care about the second</span></div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Training error</dt><dd>Error measured on the examples used to fit the model.</dd>
+        <dt>Generalization / test error</dt><dd>Expected error on a <em>new</em> input; estimated on a separate test set.</dd>
+        <dt>Data-generating process</dt><dd>The (unknown) random process that produces the data.</dd>
+        <dt>i.i.d.</dt><dd><b>I</b>ndependent and <b>i</b>dentically <b>d</b>istributed: each example is drawn separately, all from the same distribution \(p_{\text{data}}\).</dd>
+        <dt>Underfitting</dt><dd>Goal 1 fails: training error is too large.</dd>
+        <dt>Overfitting</dt><dd>Goal 2 fails: the gap between training and test error is too large.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Model A: training MSE 0.30, test MSE 0.33 → gap 0.03, but the training error is high → <b>underfitting</b>.</li>
+        <li>Model B: training MSE 0.01, test MSE 0.45 → gap 0.44 → <b>overfitting</b>.</li>
+        <li>Model C: training MSE 0.06, test MSE 0.08 → both small → good generalization. Pick C.</li>
+      </ol></div>
+    </div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections to other lectures</h3><ul class="conn">
+    <li><span class="tag fwd">Leads to</span><span><a href="ch08-1.html#/s-erm">Empirical risk minimization (L7)</a>: training = minimizing the average loss on the training set as a stand-in for the true expected loss.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch07.html#/s-reg-what">Regularization (L6)</a>: the whole chapter is about shrinking the gap (goal 2).</span></li>
+  </ul></div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-capacity" data-part="Part 2 · Generalization (5.2–5.3)" data-title="Capacity, over- & underfitting" data-stages="init,final">
+  <div class="slide-head">
+    <span class="kicker">5.2 · Capacity</span>
+    <h2>Capacity: how flexible is the model family?</h2>
+    <div class="stages"></div>
+  </div>
+  <p class="bigidea">Too little capacity → <b>underfitting</b> (can’t fit even the training data). Too much capacity for the amount of data → <b>overfitting</b> (memorizes noise). The best capacity matches the <b>complexity of the task</b> and the <b>amount of data</b>.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <p>A model’s <b>capacity</b> is its ability to fit a wide variety of functions. One way to control it is to choose the <b>hypothesis space</b> — the set of functions the algorithm is allowed to pick from.</p>
+        <p>Linear regression can only draw straight lines. Add \(x^2\) as an extra feature and it can draw parabolas; add up to \(x^9\) and it can draw very wiggly curves. The model is still <b>linear in the parameters</b>, so the normal equations still solve it in closed form.</p>
+      </div>
+      <div class="math">\[ \hat y=b+wx\qquad\hat y=b+w_1x+w_2x^2\qquad\hat y=b+\sum_{i=1}^{9}w_ix^i \]<span class="eqno">(5.15–5.17) degree 1, 2 and 9</span></div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Capacity</dt><dd>How many / how complex the functions a model can represent.</dd>
+        <dt>Hypothesis space</dt><dd>The set of all functions the learning algorithm may choose as its answer.</dd>
+        <dt>Representational capacity</dt><dd>The family of functions the model <em>could</em> express by varying its parameters.</dd>
+        <dt>Effective capacity</dt><dd>What the learning algorithm actually reaches — limited by the optimizer, so it can be smaller.</dd>
+        <dt>Occam’s razor</dt><dd>Among explanations that fit the data equally well, prefer the simplest.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Degree-3 model, input \(x=0.5\). Features: \((1,\;x,\;x^2,\;x^3)=(1,\;0.5,\;0.25,\;0.125)\).</li>
+        <li>Weights \((b,w_1,w_2,w_3)=(0.1,\;2,\;-1,\;0.5)\).</li>
+        <li>\(\hat y=0.1+2(0.5)-1(0.25)+0.5(0.125)=0.1+1-0.25+0.0625=0.9125\). Same dot-product as linear regression — just with more features.</li>
+        <li>Parameters: degree d has d + 1 weights. With m = 10 points, degree 9 has 10 weights → it can pass through every point exactly (zero training error) — usually overfitting.</li>
+      </ol></div>
+    </div>
+    <div data-widget="polyfit"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections to other lectures</h3><ul class="conn">
+    <li><span class="tag fwd">Leads to</span><span><a href="ch05-4.html#/s-bias-variance">Bias–variance trade-off (L2)</a>: underfitting ≈ high bias, overfitting ≈ high variance.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch06-1.html#/s-uat">Universal approximation (L4)</a>: neural networks have enormous capacity; the question becomes how to control it.</span></li>
+  </ul></div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-capacity-curve" data-part="Part 2 · Generalization (5.2–5.3)" data-title="The U-curve, VC dimension, Bayes error" data-stages="final">
+  <div class="slide-head">
+    <span class="kicker">5.2 · Capacity (continued)</span>
+    <h2>The U-shaped curve, VC dimension and Bayes error</h2>
+    <div class="stages"></div>
+  </div>
+  <p class="bigidea">As capacity grows, training error keeps falling but test error falls and then <b>rises</b>: a U-shape. More training data shrinks the gap. No model can beat the <b>Bayes error</b> caused by noise.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li><b>Statistical learning theory</b> proves: the gap between training and test error is bounded by a quantity that <b>grows with capacity</b> and <b>shrinks with more training examples</b>.</li>
+          <li>The <b>VC dimension</b> measures the capacity of a binary classifier: the largest number of points it can label in <em>every</em> possible way (“shatter”).</li>
+          <li>These bounds are loose and hard to compute for deep networks (their effective capacity depends on the optimizer), so in practice we <b>measure</b> instead.</li>
+          <li><b>Bayes error</b>: the error of an oracle that knows the true distribution \(p(\mathbf x,y)\). It is &gt; 0 when \(y\) is noisy, or depends on variables not in \(\mathbf x\).</li>
+          <li>More data never increases the expected generalization error. Even with optimal capacity there can be a big gap — then <b>gather more data</b>.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Optimal capacity</dt><dd>The capacity at the bottom of the test-error U-curve.</dd>
+        <dt>Shatter</dt><dd>A classifier shatters m points if, for every one of the \(2^m\) ways to label them, some setting of the classifier gets all labels right.</dd>
+        <dt>VC dimension</dt><dd>The largest m that the classifier can shatter.</dd>
+        <dt>Bayes error</dt><dd>Lowest possible error, reached by knowing the true distribution; caused by noise.</dd>
+        <dt>Non-parametric model</dt><dd>A model whose size grows with the data (e.g. nearest neighbour: “copy the label of the closest training point”).</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>A straight-line classifier in 2-D. Three points not on one line: all \(2^3=8\) labelings can be separated by some line → shattered.</li>
+        <li>Four points: the “XOR” labeling (diagonal corners share a label) can’t be separated by any line → not shattered.</li>
+        <li>So the VC dimension of a line in 2-D is <b>3</b>. More generally, a linear classifier in n dimensions has VC dimension n + 1.</li>
+        <li>In the demo, noise std σ = 0.25 → the Bayes error is \(\sigma^2=0.25^2=0.0625\): even the true sine curve has this MSE.</li>
+      </ol></div>
+    </div>
+    <div data-widget="capacityCurve"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections to other lectures</h3><ul class="conn">
+    <li><span class="tag fwd">Leads to</span><span><a href="ch06-1.html#/s-xor">Learning XOR (L4)</a>: the 4-point labeling a line can’t shatter is exactly the problem that motivates hidden layers.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch07.html#/s-early-stop">Early stopping (L6)</a>: watching the validation curve go up during training is the same U-shape, over training time.</span></li>
+  </ul></div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-nfl" data-part="Part 2 · Generalization (5.2–5.3)" data-title="The no free lunch theorem" data-stages="init">
+  <div class="slide-head">
+    <span class="kicker">5.2.1 · No free lunch</span>
+    <h2>No free lunch: there is no universally best algorithm</h2>
+    <div class="stages"></div>
+  </div>
+  <p class="bigidea">Averaged over <b>all possible</b> worlds, every classifier is equally good on unseen points. Algorithms win only by making <b>assumptions that match the real world</b>.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <p>Averaged over all possible data-generating distributions, every classification algorithm has the <b>same error rate</b> on previously unobserved points. The most sophisticated algorithm is, on average over all tasks, no better than always predicting the same class.</p>
+        <p>Luckily, we don’t live in “all possible worlds”. If we make assumptions about the kinds of distributions found in real-world applications, we can design algorithms that do well <em>on those</em>. The goal of ML research is therefore to understand which distributions matter in the real world, and which algorithms work well on them.</p>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Data-generating distribution</dt><dd>The true (unknown) rule that produces examples and labels.</dd>
+        <dt>Averaged over all distributions</dt><dd>Every possible way of labelling the unseen points counted as equally likely.</dd>
+        <dt>Prior assumption</dt><dd>A belief about the world built into the algorithm, e.g. “nearby inputs have similar outputs”.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>3 unseen points → \(2^3=8\) possible true labelings (“worlds”).</li>
+        <li>Your algorithm predicts (1, 1, 1). In the world (0, 0, 0) it gets 0/3 right; in (1, 1, 1) 3/3; in the three worlds with one 1 it gets 1/3; in the three with two 1s, 2/3.</li>
+        <li>Average over the 8 worlds: \(\frac{0+3\cdot\frac13+3\cdot\frac23+1}{8}=\frac{0+1+2+1}{8}=0.5\). Any prediction gives the same 50% — try it in the demo.</li>
+      </ol></div>
+    </div>
+    <div data-widget="nfl"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections to other lectures</h3><ul class="conn">
+    <li><span class="tag fwd">Leads to</span><span><a href="ch05-4.html#/s-smoothness">Smoothness prior & why deep learning (L2)</a>: which assumptions deep learning makes about the real world.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch09.html#/s-prior">Convolution as an infinitely strong prior (L10)</a>: a concrete, very successful real-world assumption for images.</span></li>
+  </ul></div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-regularization" data-part="Part 2 · Generalization (5.2–5.3)" data-title="Regularization & weight decay" data-stages="loss">
+  <div class="slide-head">
+    <span class="kicker">5.2.2 · Regularization</span>
+    <h2>Regularization: expressing preferences</h2>
+    <div class="stages"></div>
+  </div>
+  <p class="bigidea">Instead of removing functions from the hypothesis space, add a <b>preference</b>: e.g. prefer <b>small weights</b>. The preferred solution wins unless the other one fits the data <b>much</b> better.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <p><b>Weight decay</b> adds the size of the weights to the training criterion. \(\lambda\) is chosen in advance: \(\lambda=0\) means no preference; larger \(\lambda\) forces smaller weights. The result trades off fitting the data against being small — smaller slopes, or weight on fewer features.</p>
+        <p>In general, add a penalty called a <b>regularizer</b> \(\Omega(\mathbf w)\) to the cost; weight decay uses \(\Omega(\mathbf w)=\mathbf w^\top\mathbf w\). Excluding a function from the hypothesis space is like an <em>infinitely</em> strong preference against it.</p>
+        <p><b>Definition:</b> regularization is any modification to a learning algorithm intended to reduce its <b>generalization error but not its training error</b>. By no free lunch, there is no best regularizer — but deep learning finds that a few general-purpose ones work on a wide range of tasks.</p>
+      </div>
+      <div class="math">\[ J(\mathbf w)=\text{MSE}_{\text{train}}+\lambda\,\mathbf w^{\top}\mathbf w \]<span class="eqno">(5.18)</span></div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>\(J(\mathbf w)\)</dt><dd>The training criterion (cost) that the algorithm minimizes.</dd>
+        <dt>\(\lambda\) (lambda)</dt><dd>Regularization strength — a hyper-parameter chosen before training.</dd>
+        <dt>\(\mathbf w^\top\mathbf w\)</dt><dd>Sum of squared weights \(w_1^2+\dots+w_n^2\) (squared \(L^2\) norm).</dd>
+        <dt>Regularizer \(\Omega\)</dt><dd>Any penalty term added to the cost to express a preference.</dd>
+        <dt>Weight decay</dt><dd>The \(\lambda\mathbf w^\top\mathbf w\) penalty; during gradient descent it shrinks (“decays”) the weights a little every step.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>\(\lambda=0.01\). Candidate A: MSE 0.040 with weights (3, −4): \(\mathbf w^\top\mathbf w=9+16=25\) → \(J=0.040+0.01\times25=0.290\).</li>
+        <li>Candidate B: MSE 0.060 with weights (1, −1): \(\mathbf w^\top\mathbf w=2\) → \(J=0.060+0.01\times2=0.080\).</li>
+        <li>B fits slightly worse but has a much smaller \(J\) → weight decay picks B. With \(\lambda=0\) it would pick A.</li>
+      </ol></div>
+    </div>
+    <div data-widget="weightDecay"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections to other lectures</h3><ul class="conn">
+    <li><span class="tag fwd">Leads to</span><span><a href="ch07.html#/s-l2">L2 regularization in depth (L6)</a>: how weight decay shrinks weights along each eigen-direction.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch05-4.html#/s-map">MAP estimation (L2)</a>: weight decay is exactly a Gaussian prior on the weights.</span></li>
+  </ul></div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-hyper" data-part="Part 2 · Generalization (5.2–5.3)" data-title="Hyper-parameters & validation" data-stages="final">
+  <div class="slide-head">
+    <span class="kicker">5.3 · Hyper-parameters and validation sets</span>
+    <h2>Hyper-parameters and the validation set</h2>
+    <div class="stages"></div>
+  </div>
+  <p class="bigidea">Settings that control capacity can’t be learned on the training set — it always picks the <b>maximum</b> capacity. Use a separate <b>validation set</b> carved from the training data; never touch the <b>test set</b>.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <p><b>Hyper-parameters</b> are settings of the algorithm that the learning algorithm itself does not adapt: e.g. the polynomial degree, or \(\lambda\) of weight decay. Sometimes because they are hard to optimize, but mostly because learning them on the training set would always choose maximum capacity → overfitting.</p>
+        <ol class="steps">
+          <li>Split the data: <b>test set</b> aside (never used for any choice).</li>
+          <li>Split the rest: ~<b>80%</b> training, ~<b>20%</b> validation.</li>
+          <li>Train with each hyper-parameter value on the training part; compare on the validation part.</li>
+          <li>Pick the best, (optionally retrain), then report the test error once.</li>
+        </ol>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Parameter</dt><dd>Learned by the training algorithm (weights \(\mathbf w\), bias b).</dd>
+        <dt>Hyper-parameter</dt><dd>Chosen outside training (degree, \(\lambda\), learning rate, number of layers…).</dd>
+        <dt>Validation set</dt><dd>Training examples held out to estimate generalization error while choosing hyper-parameters.</dd>
+        <dt>Test set</dt><dd>Used only once, at the end, for an unbiased final score.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>You have 1 250 labelled examples. Put 250 aside as the test set.</li>
+        <li>The remaining 1 000 → \(0.8\times1000=800\) training, \(200\) validation.</li>
+        <li>Validation MSE for degrees 1, 3, 9: 0.21, 0.07, 0.95 → choose degree 3. Training MSE would have chosen degree 9.</li>
+      </ol></div>
+    </div>
+    <div data-widget="hyperSearch"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections to other lectures</h3><ul class="conn">
+    <li><span class="tag fwd">Leads to</span><span><a href="ch07.html#/s-early-stop">Early stopping (L6)</a>: the number of training steps is a hyper-parameter chosen with the validation curve.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch08-3.html#/s-choose">Choosing an optimizer and learning rate (L8)</a>: also hyper-parameters tuned on validation data.</span></li>
+  </ul></div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-cv" data-part="Part 2 · Generalization (5.2–5.3)" data-title="Cross-validation" data-stages="final">
+  <div class="slide-head">
+    <span class="kicker">5.3.1 · Cross-validation</span>
+    <h2>k-fold cross-validation</h2>
+    <div class="stages"></div>
+  </div>
+  <p class="bigidea">When data is scarce, a single small test set gives a noisy estimate. <b>Rotate</b>: split into k folds, test on each fold once, train on the rest, and <b>average</b> the k errors.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <p>A fixed split can leave a very small test set, so the error estimate is unreliable. Instead, repeat training and testing on different splits of the same data. In <b>k-fold cross-validation</b> the dataset is split into k non-overlapping subsets (folds). On trial i, fold i is the test set and the other k − 1 folds are the training set. The estimate is the <b>average test error over the k trials</b>.</p>
+        <p>Cost: you train k times. Benefit: every example is used for testing exactly once, and for training k − 1 times.</p>
+      </div>
+      <div class="math">\[ \widehat{\text{err}}_{\text{CV}}=\frac1k\sum_{i=1}^{k}\text{err}\big(\text{model trained without fold }i,\ \text{fold }i\big) \]</div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Fold</dt><dd>One of the k equal, non-overlapping parts of the dataset.</dd>
+        <dt>Trial</dt><dd>One round: train on k − 1 folds, test on the remaining fold.</dd>
+        <dt>Leave-one-out</dt><dd>The extreme case k = m: every fold is a single example.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>100 examples, k = 5 → five folds of 20 examples.</li>
+        <li>Trial errors: 0.12, 0.10, 0.15, 0.09, 0.14.</li>
+        <li>CV estimate \(=\frac{0.12+0.10+0.15+0.09+0.14}{5}=\frac{0.60}{5}=0.12\). The spread (0.09–0.15) shows how uncertain a single small split would have been.</li>
+      </ol></div>
+    </div>
+    <div data-widget="kfold"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections to other lectures</h3><ul class="conn">
+    <li><span class="tag fwd">Leads to</span><span><a href="ch05-4.html#/s-variance">Variance and standard error (L2)</a>: how to put error bars on an estimate like this one.</span></li>
+    <li><span class="tag same">Compare</span><span><a href="ch07.html#/s-bagging">Bagging (L6)</a>: also trains several models on resampled data — but to average their predictions, not to estimate error.</span></li>
+  </ul></div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-summary" data-part="Wrap-up" data-title="Summary: how it all connects" data-stages="data,init,loss,update,final">
+  <div class="slide-head">
+    <span class="kicker">Wrap-up</span>
+    <h2>Summary: how it all connects</h2>
+    <div class="stages"></div>
+  </div>
+  <p class="bigidea">Learning = improving P on T with experience E. We fit by minimizing training error, but the real goal is <b>generalization</b>, which depends on <b>capacity</b>, <b>data</b> and <b>regularization</b>, checked on <b>validation / test</b> data.</p>
+  <div class="card" style="padding:0;overflow:hidden"><div class="scroll-x"><table class="data-table">
+    <thead><tr><th>Concept</th><th>One-line meaning</th><th>Formula / rule</th><th>Training step</th><th>Comes back in</th></tr></thead>
+    <tbody>
+      <tr><td>T, P, E</td><td>Task, performance measure, experience</td><td>Learn ⇔ P on T improves with E</td><td><span class="pill">Data &amp; task</span></td><td>Every lecture</td></tr>
+      <tr><td>Design matrix</td><td>Rows = examples, columns = features</td><td>\(\mathbf X\in\mathbb R^{m\times n}\)</td><td><span class="pill">Data</span><span class="pill">Minibatch</span></td><td>L7 minibatches</td></tr>
+      <tr><td>Linear regression</td><td>Weighted sum of features</td><td>\(\hat y=\mathbf w^\top\mathbf x+b\)</td><td><span class="pill">Forward</span></td><td>L2 (as MLE), L3 (by gradient descent), L4</td></tr>
+      <tr><td>MSE</td><td>Average squared error</td><td>\(\frac1m\|\hat{\mathbf y}-\mathbf y\|^2\)</td><td><span class="pill">Loss</span></td><td>L2, L4 cost functions</td></tr>
+      <tr><td>Normal equations</td><td>Exact minimizer of MSE</td><td>\(\mathbf w=(\mathbf X^\top\mathbf X)^{-1}\mathbf X^\top\mathbf y\)</td><td><span class="pill">Update</span></td><td>L3 least squares</td></tr>
+      <tr><td>Generalization</td><td>Doing well on unseen data</td><td>i.i.d. assumption</td><td><span class="pill">Evaluate</span></td><td>L6, L7</td></tr>
+      <tr><td>Capacity</td><td>Flexibility of the model family</td><td>U-shaped test error</td><td><span class="pill">Init (model choice)</span></td><td>L2 bias–variance, L4</td></tr>
+      <tr><td>No free lunch</td><td>No universally best algorithm</td><td>Average over all worlds = equal</td><td><span class="pill">Model choice</span></td><td>L2 smoothness prior, L10 conv prior</td></tr>
+      <tr><td>Weight decay</td><td>Prefer small weights</td><td>\(J=\text{MSE}+\lambda\mathbf w^\top\mathbf w\)</td><td><span class="pill">Loss</span></td><td>L2 MAP, L6 regularization</td></tr>
+      <tr><td>Validation / CV</td><td>Choose hyper-parameters on held-out data</td><td>80/20 split; k-fold average</td><td><span class="pill">Evaluate</span></td><td>L6 early stopping, L8 tuning</td></tr>
+    </tbody>
+  </table></div></div>
+  <div class="row3" style="margin-top:16px">
+    <div class="card plain"><h3><span class="dot"></span>Remember</h3><p>Training error is what we <em>can</em> minimize; test error is what we <em>care</em> about.</p></div>
+    <div class="card plain"><h3><span class="dot"></span>Next lecture</h3><p><a href="ch05-4.html">Machine Learning Basics II</a> explains <em>why</em> over/underfitting happen (bias and variance) and where the MSE loss comes from (maximum likelihood).</p></div>
+    <div class="card fit"><h3><span class="dot"></span>Check yourself</h3><p>Ten quiz questions with explanations.</p><button class="btn primary" type="button" data-goto="s-quiz" style="margin-top:6px">Take the quiz →</button></div>
+  </div>
+</section>
+
+<section class="slide" id="s-quiz" data-part="Wrap-up" data-title="Check yourself (quiz)">
+  <div class="slide-head"><span class="kicker">Wrap-up</span><h2>Check yourself</h2><p class="lede">Pick an answer to see whether it is right and why.</p></div>
+  <div data-widget="quiz"></div>
+  <footer class="credits">Study notes for Deep Learning, chapter 5.1–5.3. Equation numbers follow Goodfellow, Bengio &amp; Courville, <em>Deep Learning</em> (MIT Press, 2016). Explanations, diagrams and demos are original.</footer>
+</section>
+
+</main>
+</body>
+</html>

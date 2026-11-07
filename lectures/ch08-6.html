@@ -3,53 +3,42 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Optimization for Training</title>
+<title>Optimization III: Second-Order Methods &amp; Strategies</title>
 <meta name="description" content="Interactive study slides for Deep Learning chapter 8.6–8.7: approximate second-order methods (Newton, conjugate gradients, BFGS, L-BFGS) and optimization strategies (batch norm, Polyak averaging, pretraining, model design, continuation and curriculum learning).">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232a78d6'/%3E%3Cpath d='M6 9c5 0 6 14 10 14s5-14 10-14' fill='none' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
-<link rel="stylesheet" href="css/style.css?v=6">
+<link rel="stylesheet" href="../css/style.css?v=9">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
-<script defer src="js/core.js?v=6"></script>
-<script defer src="js/second-order.js?v=6"></script>
-<script defer src="js/meta.js?v=6"></script>
-<script defer src="js/quiz.js?v=6"></script>
+<script defer src="../js/core.js?v=9"></script>
+<script defer src="../js/course.js?v=9"></script>
+<script defer src="../js/quiz.js?v=9"></script>
+<script defer src="../js/lectures/ch08-6a.js?v=9"></script>
+<script defer src="../js/lectures/ch08-6b.js?v=9"></script>
 </head>
-<body>
+<body data-page="lecture" data-lecture="ch08-6">
+<script>
+window.TOPICS = {
+  init: [['s-pretrain', 'Greedy supervised pretraining'], ['s-pretrain-variants', 'Transfer learning & teacher hints'], ['s-continuation', 'Continuation: start from an easy problem'], ['s-design', 'Designing easy-to-optimize models']],
+  batch: [['s-curriculum', 'Curriculum learning'], ['s-bn-test', 'BN statistics come from the minibatch']],
+  forward: [['s-bn-problem', 'Why layers interfere'], ['s-bn-how', 'Batch normalization'], ['s-bn-gamma', 'γ, β and where to put BN'], ['s-design', 'ReLU, skip connections, auxiliary heads']],
+  loss: [['s-risk', 'Empirical risk J(θ)'], ['s-continuation', 'Blurred / easier versions of J'], ['s-pretrain-variants', 'Hint losses (teacher → student)']],
+  backward: [['s-taylor', 'Slope vs. curvature'], ['s-bn-backprop', 'Backprop through μ and σ'], ['s-design', 'Skip connections keep gradients alive']],
+  update: [['s-newton', "Newton's method"], ['s-saddle', 'Regularized Newton'], ['s-steepest', 'Line search'], ['s-cg', 'Conjugate gradients'], ['s-bfgs', 'BFGS'], ['s-lbfgs', 'L-BFGS'], ['s-polyak', 'Polyak averaging']],
+  final: [['s-polyak', 'Averaged weights for evaluation'], ['s-bn-test', 'BN running averages at test time']]
+};
+</script>
 
-<header class="topbar">
-  <button id="menuBtn" class="icon-btn" type="button" aria-label="Open slide list">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
-  </button>
-  <div class="brand">
-    <b>Optimization for Training</b>
-    <span>Deep Learning · Chapter 8.6 – 8.7 · interactive study slides</span>
-  </div>
-  <button id="modeBtn" class="icon-btn" type="button" title="Switch between slides and one long page">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
-    <span class="txt">One page</span>
-  </button>
-  <button id="themeBtn" class="icon-btn" type="button" title="Toggle light / dark theme">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/></svg>
-    <span class="txt">Dark</span>
-  </button>
-  <div class="progress"></div>
-</header>
-
-<div class="layout">
-  <nav id="toc" class="sidebar" aria-label="Slides"></nav>
-  <div class="scrim"></div>
-
-  <main class="deck" id="deck">
+<main class="deck" id="deck">
 
 <!-- ============================================================ -->
-<section class="slide" id="s-title" data-part="intro" data-title="Welcome & roadmap">
+<section class="slide" id="s-title" data-part="Start here" data-title="Welcome & roadmap">
   <div class="slide-head">
-    <span class="kicker">Deep Learning · Chapter 8.6 – 8.7</span>
-    <h1>Optimization for Training</h1>
+    <span class="kicker">Lecture 9 · Chapter 8.6 – 8.7</span>
+    <h1>Optimization III: Second-Order Methods &amp; Strategies</h1>
     <p class="lede">Gradient descent is simple, but it can be slow, unstable, or stuck. This lecture answers one question:
       <b>how do we make training faster and more reliable?</b> Part A changes <em>how we take each step</em>. Part B changes
       <em>what we are stepping on</em>: the model, the starting point, the objective and the data.</p>
@@ -92,13 +81,14 @@
 </section>
 
 <!-- ============================================================ -->
-<section class="slide" id="s-loop" data-part="intro" data-title="The big picture: the training loop" data-stages="init,batch,forward,loss,backward,update,final">
+<section class="slide" id="s-loop" data-part="Start here" data-title="The big picture: the training loop" data-stages="init,batch,forward,loss,backward,update,final">
   <div class="slide-head">
     <span class="kicker">Start here</span>
     <h2>The big picture: where every idea plugs in</h2>
     <p class="lede">Training a network means repeating the same loop thousands of times. Everything in this lecture improves one or more steps of this loop. Keep this map in mind: every later slide shows its position on it.</p>
     <div class="stages"></div>
   </div>
+  <p class="bigidea">This lecture is about the <b>update step</b> (Part A) and about everything <em>around</em> the optimizer that makes the update easier (Part B).</p>
   <div class="stack">
     <div data-widget="loop"></div>
     <div class="row3">
@@ -110,12 +100,13 @@
 </section>
 
 <!-- ============================================================ -->
-<section class="slide" id="s-risk" data-part="A" data-title="What are we minimizing? J(θ)" data-stages="loss">
+<section class="slide" id="s-risk" data-part="Part A · Approximate second-order methods (8.6)" data-title="What are we minimizing? J(θ)" data-stages="loss">
   <div class="slide-head">
     <span class="kicker">Part A · Setup</span>
     <h2>What are we minimizing? The empirical risk J(θ)</h2>
     <div class="stages"></div>
   </div>
+  <p class="bigidea">Training minimizes the <b>average loss over the training set</b>, J(θ). Every optimizer is just a strategy for walking downhill on this landscape.</p>
   <div class="cols">
     <div class="stack">
       <div class="card plain">
@@ -137,15 +128,23 @@
     </div>
     <div data-widget="riskDemo"></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections to other lectures</h3>
+    <ul class="conn">
+      <li><span class="tag back">Builds on</span><span><a href="ch05-4.html#/s-mle">Maximum likelihood (L2)</a>: the loss L is usually a negative log-likelihood, and averaging it over the data is exactly MLE.</span></li>
+      <li><span class="tag back">Builds on</span><span><a href="ch08-1.html#/s-erm">Empirical risk minimization (L7)</a>: why we minimize the training average instead of the true risk.</span></li>
+      <li><span class="tag fwd">Leads to</span><span>Every method on the following slides walks down this J(θ).</span></li>
+    </ul>
+  </div>
 </section>
 
 <!-- ============================================================ -->
-<section class="slide" id="s-taylor" data-part="A" data-title="Slope vs. curvature" data-stages="backward,update">
+<section class="slide" id="s-taylor" data-part="Part A · Approximate second-order methods (8.6)" data-title="Slope vs. curvature" data-stages="backward,update">
   <div class="slide-head">
     <span class="kicker">Part A · Key idea</span>
     <h2>First-order vs. second-order information</h2>
     <div class="stages"></div>
   </div>
+  <p class="bigidea">The gradient tells you <b>which way</b> is downhill; the Hessian (curvature) tells you <b>how far</b> to go.</p>
   <div class="cols">
     <div class="stack">
       <div class="card plain">
@@ -167,15 +166,22 @@
     </div>
     <div data-widget="taylor1d"></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections to other lectures</h3>
+    <ul class="conn">
+      <li><span class="tag back">Builds on</span><span><a href="ch04-3.html#/s-jacobian-hessian">Jacobian & Hessian (L3)</a> and <a href="ch04-3.html#/s-condition">condition number (L3)</a>: the second-derivative test and why curvature controls the best step size.</span></li>
+      <li><span class="tag same">Compare</span><span><a href="ch08-3.html#/s-adam">Adam (L8)</a> rescales each weight by its gradient history — a cheap, diagonal stand-in for curvature.</span></li>
+    </ul>
+  </div>
 </section>
 
 <!-- ============================================================ -->
-<section class="slide" id="s-newton" data-part="A" data-title="Newton's method" data-stages="backward,update">
+<section class="slide" id="s-newton" data-part="Part A · Approximate second-order methods (8.6)" data-title="Newton's method" data-stages="backward,update">
   <div class="slide-head">
     <span class="kicker">Part A · 8.6.1</span>
     <h2>Newton's method</h2>
     <div class="stages"></div>
   </div>
+  <p class="bigidea">Approximate the loss by a bowl and <b>jump to its bottom</b>: θ* = θ₀ − H⁻¹∇J. One step on a perfect bowl.</p>
   <div class="cols">
     <div class="stack">
       <div class="card plain">
@@ -201,15 +207,23 @@
     </div>
     <div data-widget="playground" data-preset="newton" data-title="Gradient descent vs. Newton" data-sub="Raise the bowl's stretch κ: gradient descent zig-zags more and more, while Newton still lands in one step. Switch to the curvy bowl to see Newton iterate."></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections to other lectures</h3>
+    <ul class="conn">
+      <li><span class="tag back">Builds on</span><span><a href="ch04-3.html#/s-condition">Ill-conditioning & Newton (L3)</a>: where Newton was first introduced as the fix for stretched valleys.</span></li>
+      <li><span class="tag back">Builds on</span><span><a href="ch08-1.html#/s-illcond">Ill-conditioning in neural nets (L7)</a>: the problem Newton is trying to solve.</span></li>
+      <li><span class="tag fwd">Leads to</span><span>The next slides: what breaks (saddles, cost) and the cheaper approximations (CG, BFGS, L-BFGS).</span></li>
+    </ul>
+  </div>
 </section>
 
 <!-- ============================================================ -->
-<section class="slide" id="s-saddle" data-part="A" data-title="Newton at saddle points" data-stages="update">
+<section class="slide" id="s-saddle" data-part="Part A · Approximate second-order methods (8.6)" data-title="Newton at saddle points" data-stages="update">
   <div class="slide-head">
     <span class="kicker">Part A · 8.6.1</span>
     <h2>When Newton goes wrong: saddle points &amp; regularization</h2>
     <div class="stages"></div>
   </div>
+  <p class="bigidea">Newton looks for <b>any</b> point with zero slope, so near a <b>saddle</b> it can walk the wrong way. Adding αI to H fixes the direction.</p>
   <div class="cols">
     <div class="stack">
       <div class="card warn">
@@ -228,15 +242,22 @@
     </div>
     <div data-widget="playground" data-preset="saddle" data-title="Saddle point: Newton vs. regularized Newton" data-sub="All three start in the zone where H has a negative eigenvalue. Watch plain Newton get pulled into the saddle, then vary α."></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections to other lectures</h3>
+    <ul class="conn">
+      <li><span class="tag back">Builds on</span><span><a href="ch08-1.html#/s-saddle">Saddle points and plateaus (L7)</a>: in high dimensions saddle points vastly outnumber local minima.</span></li>
+      <li><span class="tag back">Builds on</span><span><a href="ch04-3.html#/s-critical">Critical points (L3)</a>: minima, maxima and saddles all have zero gradient.</span></li>
+    </ul>
+  </div>
 </section>
 
 <!-- ============================================================ -->
-<section class="slide" id="s-cost" data-part="A" data-title="Why Newton doesn't scale" data-stages="update">
+<section class="slide" id="s-cost" data-part="Part A · Approximate second-order methods (8.6)" data-title="Why Newton doesn't scale" data-stages="update">
   <div class="slide-head">
     <span class="kicker">Part A · 8.6.1</span>
     <h2>Why exact Newton doesn't scale to neural networks</h2>
     <div class="stages"></div>
   </div>
+  <p class="bigidea">A network with k weights has a <b>k × k Hessian</b>: impossible to store or invert when k is in the millions.</p>
   <div class="cols">
     <div class="stack">
       <div class="card plain">
@@ -264,12 +285,13 @@
 </section>
 
 <!-- ============================================================ -->
-<section class="slide" id="s-steepest" data-part="A" data-title="Line search & the zig-zag" data-stages="update">
+<section class="slide" id="s-steepest" data-part="Part A · Approximate second-order methods (8.6)" data-title="Line search & the zig-zag" data-stages="update">
   <div class="slide-head">
     <span class="kicker">Part A · 8.6.2 (motivation)</span>
     <h2>Steepest descent with line search, and the zig-zag problem</h2>
     <div class="stages"></div>
   </div>
+  <p class="bigidea">Exact line search along the gradient makes every new direction <b>perpendicular</b> to the last one → zig-zag.</p>
   <div class="cols">
     <div class="stack">
       <div class="card plain">
@@ -283,15 +305,22 @@
     </div>
     <div data-widget="playground" data-preset="steepest" data-title="Steepest descent with exact line search" data-sub="The small square markers show the 90° turns. Turn on plain gradient descent to compare."></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections to other lectures</h3>
+    <ul class="conn">
+      <li><span class="tag back">Builds on</span><span><a href="ch04-3.html#/s-gd">Gradient descent & line search (L3)</a>.</span></li>
+      <li><span class="tag same">Compare</span><span><a href="ch08-3.html#/s-momentum">Momentum (L8)</a> fixes the same zig-zag by averaging past gradients.</span></li>
+    </ul>
+  </div>
 </section>
 
 <!-- ============================================================ -->
-<section class="slide" id="s-cg" data-part="A" data-title="Conjugate gradients" data-stages="update">
+<section class="slide" id="s-cg" data-part="Part A · Approximate second-order methods (8.6)" data-title="Conjugate gradients" data-stages="update">
   <div class="slide-head">
     <span class="kicker">Part A · 8.6.2</span>
     <h2>Conjugate gradients: directions that don't undo each other</h2>
     <div class="stages"></div>
   </div>
+  <p class="bigidea">Mix a bit of the <b>previous direction</b> into the new one so you never undo earlier progress (conjugate directions).</p>
   <div class="cols">
     <div class="stack">
       <div class="card plain">
@@ -309,15 +338,21 @@
     </div>
     <div data-widget="playground" data-preset="cg" data-title="Steepest descent vs. conjugate gradients" data-sub="Both use exact line searches. Count the steps: on the quadratic bowl CG finishes in 2."></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections to other lectures</h3>
+    <ul class="conn">
+      <li><span class="tag same">Compare</span><span><a href="ch08-3.html#/s-momentum">Momentum (L8)</a> also adds a fraction of the previous step: d = −g + β·d<sub>prev</sub>. CG chooses β cleverly and uses a line search; momentum uses a fixed α.</span></li>
+    </ul>
+  </div>
 </section>
 
 <!-- ============================================================ -->
-<section class="slide" id="s-ncg" data-part="A" data-title="Nonlinear conjugate gradients" data-stages="update">
+<section class="slide" id="s-ncg" data-part="Part A · Approximate second-order methods (8.6)" data-title="Nonlinear conjugate gradients" data-stages="update">
   <div class="slide-head">
     <span class="kicker">Part A · 8.6.2</span>
     <h2>Nonlinear conjugate gradients</h2>
     <div class="stages"></div>
   </div>
+  <p class="bigidea">On real (non-quadratic) losses CG needs <b>resets</b>, a warm start with SGD, and works in minibatch form.</p>
   <div class="cols">
     <div class="stack">
       <div class="card plain">
@@ -337,12 +372,13 @@
 </section>
 
 <!-- ============================================================ -->
-<section class="slide" id="s-bfgs" data-part="A" data-title="BFGS (quasi-Newton)" data-stages="update">
+<section class="slide" id="s-bfgs" data-part="Part A · Approximate second-order methods (8.6)" data-title="BFGS (quasi-Newton)" data-stages="update">
   <div class="slide-head">
     <span class="kicker">Part A · 8.6.3</span>
     <h2>BFGS: Newton's power without computing H⁻¹</h2>
     <div class="stages"></div>
   </div>
+  <p class="bigidea">Keep a running estimate <b>M ≈ H⁻¹</b>, improved after every step from how the gradient changed. Newton-like steps without inverting H.</p>
   <div class="cols">
     <div class="stack">
       <div class="card plain">
@@ -363,15 +399,21 @@
     </div>
     <div data-widget="playground" data-preset="bfgs" data-title="BFGS learns the curvature as it goes" data-sub="Below the map, compare BFGS's estimate M with the true H⁻¹. It gets close using gradients only. Then set <b>Line search → Rough</b>: CG needs many more steps (about 81 vs 11), while BFGS barely suffers (18 vs 8). That is the “less time refining each line search” advantage."></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections to other lectures</h3>
+    <ul class="conn">
+      <li><span class="tag same">Compare</span><span><a href="ch08-3.html#/s-adagrad">AdaGrad / RMSProp / Adam (L8)</a>: they also learn a per-direction scale from gradient history, but only a diagonal one — O(k) memory instead of O(k²).</span></li>
+    </ul>
+  </div>
 </section>
 
 <!-- ============================================================ -->
-<section class="slide" id="s-lbfgs" data-part="A" data-title="L-BFGS (limited memory)" data-stages="update">
+<section class="slide" id="s-lbfgs" data-part="Part A · Approximate second-order methods (8.6)" data-title="L-BFGS (limited memory)" data-stages="update">
   <div class="slide-head">
     <span class="kicker">Part A · 8.6.3</span>
     <h2>L-BFGS: limited-memory BFGS</h2>
     <div class="stages"></div>
   </div>
+  <p class="bigidea">Don’t store M at all: rebuild it from the last <b>m</b> (s, y) pairs. Memory O(mk).</p>
   <div class="cols">
     <div class="stack">
       <div class="card plain">
@@ -406,13 +448,14 @@
 </section>
 
 <!-- ============================================================ -->
-<section class="slide" id="s-race" data-part="A" data-title="Part A recap: optimizer playground" data-stages="update">
+<section class="slide" id="s-race" data-part="Part A · Approximate second-order methods (8.6)" data-title="Part A recap: optimizer playground" data-stages="update">
   <div class="slide-head">
     <span class="kicker">Part A · Recap</span>
     <h2>Optimizer playground: everything from Part A</h2>
     <p class="lede">Turn on any combination of methods, pick a surface, click to choose a start, and race them. Things to try:</p>
     <div class="stages"></div>
   </div>
+  <p class="bigidea">Curvature makes each step smarter but is <b>expensive</b> and can mislead at saddles — that is why SGD-style methods still dominate deep learning.</p>
   <div class="cols">
     <div class="stack">
       <div class="card"><h3><span class="dot"></span>Experiments</h3>
@@ -427,16 +470,22 @@
     </div>
     <div data-widget="playground" data-preset="all" data-title="Full playground"></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections to other lectures</h3>
+    <ul class="conn">
+      <li><span class="tag back">Builds on</span><span><a href="ch08-3.html#/s-choose">Choosing an optimizer (L8)</a>.</span></li>
+    </ul>
+  </div>
 </section>
 
 <!-- ============================================================ -->
-<section class="slide" id="s-meta" data-part="B" data-title="Strategies & meta-algorithms" data-stages="init,batch,forward,loss,final">
+<section class="slide" id="s-meta" data-part="Part B · Strategies & meta-algorithms (8.7)" data-title="Strategies & meta-algorithms" data-stages="init,batch,forward,loss,final">
   <div class="slide-head">
     <span class="kicker">Part B · 8.7</span>
     <h2>Optimization strategies &amp; meta-algorithms</h2>
     <p class="lede">These are not new optimizers. They are <b>general templates</b> that can be specialized into algorithms, or <b>subroutines</b> that slot into almost any training procedure. You can combine all of them with SGD, Adam or anything from Part A.</p>
     <div class="stages"></div>
   </div>
+  <p class="bigidea">Part B tricks do not replace the optimizer — they make the <b>problem easier</b> for whatever optimizer you use.</p>
   <div class="row3">
     <div class="card"><h3><span class="dot"></span>Batch normalization</h3><p>Changes the <b>model</b> so layers stop fighting each other when they are updated together.</p><button class="btn" type="button" data-goto="s-bn-problem">Go →</button></div>
     <div class="card"><h3><span class="dot"></span>Polyak averaging</h3><p>Changes <b>which weights you keep</b>: the average of recent points instead of the last one.</p><button class="btn" type="button" data-goto="s-polyak">Go →</button></div>
@@ -448,12 +497,13 @@
 </section>
 
 <!-- ============================================================ -->
-<section class="slide" id="s-bn-problem" data-part="B" data-title="Why layers interfere" data-stages="forward,backward,update">
+<section class="slide" id="s-bn-problem" data-part="Part B · Strategies & meta-algorithms (8.7)" data-title="Why layers interfere" data-stages="forward,backward,update">
   <div class="slide-head">
     <span class="kicker">Part B · 8.7.1 Batch normalization (motivation)</span>
     <h2>Why deep networks are hard to update: layers interfere</h2>
     <div class="stages"></div>
   </div>
+  <p class="bigidea">Each layer’s gradient assumes the other layers stay put, but they <b>all move at once</b> — their effects multiply.</p>
   <div class="cols">
     <div class="stack">
       <div class="card plain">
@@ -471,15 +521,22 @@
     </div>
     <div data-widget="chain"></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections to other lectures</h3>
+    <ul class="conn">
+      <li><span class="tag back">Builds on</span><span><a href="ch06-5.html#/s-chain">Chain rule (L5)</a>: the gradient of a product of layers is a product of factors — change several factors at once and the result is not what any single factor predicted.</span></li>
+      <li><span class="tag back">Builds on</span><span><a href="ch08-1.html#/s-longterm">Long-term dependencies (L7)</a>: products of many weights explode or vanish.</span></li>
+    </ul>
+  </div>
 </section>
 
 <!-- ============================================================ -->
-<section class="slide" id="s-bn-how" data-part="B" data-title="Batch norm: the recipe" data-stages="batch,forward">
+<section class="slide" id="s-bn-how" data-part="Part B · Strategies & meta-algorithms (8.7)" data-title="Batch norm: the recipe" data-stages="batch,forward">
   <div class="slide-head">
     <span class="kicker">Part B · 8.7.1</span>
     <h2>Batch normalization: the recipe</h2>
     <div class="stages"></div>
   </div>
+  <p class="bigidea">For each unit, subtract the minibatch mean and divide by the std, so its input always has <b>mean 0, std 1</b>.</p>
   <div class="cols">
     <div class="stack">
       <div class="card plain">
@@ -501,15 +558,22 @@
     </div>
     <div data-widget="bnSteps"></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections to other lectures</h3>
+    <ul class="conn">
+      <li><span class="tag back">Builds on</span><span><a href="ch08-3.html#/s-init-scale">Initialization scale (L8)</a>: careful init keeps activations well-scaled at the start; BN keeps them that way during training.</span></li>
+      <li><span class="tag fwd">Used in</span><span><a href="ch09.html#/s-cnn-arch">Convolutional networks (L10)</a>: BN is a standard layer in modern CNNs.</span></li>
+    </ul>
+  </div>
 </section>
 
 <!-- ============================================================ -->
-<section class="slide" id="s-bn-backprop" data-part="B" data-title="Backprop through μ and σ" data-stages="backward">
+<section class="slide" id="s-bn-backprop" data-part="Part B · Strategies & meta-algorithms (8.7)" data-title="Backprop through μ and σ" data-stages="backward">
   <div class="slide-head">
     <span class="kicker">Part B · 8.7.1</span>
     <h2>The key trick: back-propagate through the normalization</h2>
     <div class="stages"></div>
   </div>
+  <p class="bigidea">Because we back-propagate <b>through</b> μ and σ, the gradient can never waste effort changing a unit’s mean or scale.</p>
   <div class="cols">
     <div class="stack">
       <div class="card plain">
@@ -528,15 +592,21 @@
     </div>
     <div data-widget="bnApproaches"></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections to other lectures</h3>
+    <ul class="conn">
+      <li><span class="tag back">Builds on</span><span><a href="ch06-5.html#/s-graph">Computational graphs (L5)</a>: μ and σ are just more nodes in the graph, so backprop handles them automatically.</span></li>
+    </ul>
+  </div>
 </section>
 
 <!-- ============================================================ -->
-<section class="slide" id="s-bn-test" data-part="B" data-title="BN at test time" data-stages="batch,final">
+<section class="slide" id="s-bn-test" data-part="Part B · Strategies & meta-algorithms (8.7)" data-title="BN at test time" data-stages="batch,final">
   <div class="slide-head">
     <span class="kicker">Part B · 8.7.1</span>
     <h2>Batch norm at test time: running averages</h2>
     <div class="stages"></div>
   </div>
+  <p class="bigidea">At test time use <b>running averages</b> of μ and σ collected during training, not the test batch.</p>
   <div class="cols">
     <div class="stack">
       <div class="card plain">
@@ -553,12 +623,13 @@
 </section>
 
 <!-- ============================================================ -->
-<section class="slide" id="s-bn-gamma" data-part="B" data-title="γ, β and where to put BN" data-stages="forward">
+<section class="slide" id="s-bn-gamma" data-part="Part B · Strategies & meta-algorithms (8.7)" data-title="γ, β and where to put BN" data-stages="forward">
   <div class="slide-head">
     <span class="kicker">Part B · 8.7.1</span>
     <h2>Keeping the network expressive: γ and β, and where BN goes</h2>
     <div class="stages"></div>
   </div>
+  <p class="bigidea">Learned <b>γ and β</b> give back the freedom normalization took away, with much easier learning dynamics.</p>
   <div class="cols">
     <div class="stack">
       <div class="card">
@@ -586,15 +657,21 @@
     </div>
     <div data-widget="cnnBN"></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections to other lectures</h3>
+    <ul class="conn">
+      <li><span class="tag fwd">Used in</span><span><a href="ch09.html#/s-cnn-arch">CNNs (L10)</a>: per-channel normalization shared over all positions, the same idea as parameter sharing in <a href="ch09.html#/s-sharing">convolution</a>.</span></li>
+    </ul>
+  </div>
 </section>
 
 <!-- ============================================================ -->
-<section class="slide" id="s-polyak" data-part="B" data-title="Polyak averaging" data-stages="update,final">
+<section class="slide" id="s-polyak" data-part="Part B · Strategies & meta-algorithms (8.7)" data-title="Polyak averaging" data-stages="update,final">
   <div class="slide-head">
     <span class="kicker">Part B · 8.7.3</span>
     <h2>Polyak averaging</h2>
     <div class="stages"></div>
   </div>
+  <p class="bigidea">Average the points the optimizer visits — the average sits <b>closer to the bottom</b> than any single bouncing iterate.</p>
   <div class="cols">
     <div class="stack">
       <div class="card plain">
@@ -609,15 +686,22 @@
     </div>
     <div data-widget="polyak"></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections to other lectures</h3>
+    <ul class="conn">
+      <li><span class="tag back">Builds on</span><span><a href="ch08-3.html#/s-sgd">SGD noise (L8)</a>: minibatch noise is why the iterates keep bouncing.</span></li>
+      <li><span class="tag same">Compare</span><span><a href="ch07.html#/s-bagging">Bagging & ensembles (L6)</a>: averaging many models; Polyak averages one model’s parameters over time.</span></li>
+    </ul>
+  </div>
 </section>
 
 <!-- ============================================================ -->
-<section class="slide" id="s-pretrain" data-part="B" data-title="Supervised pretraining" data-stages="init">
+<section class="slide" id="s-pretrain" data-part="Part B · Strategies & meta-algorithms (8.7)" data-title="Supervised pretraining" data-stages="init">
   <div class="slide-head">
     <span class="kicker">Part B · 8.7.4</span>
     <h2>Supervised pretraining: solve easier problems first</h2>
     <div class="stages"></div>
   </div>
+  <p class="bigidea">If the full problem is too hard, solve <b>simpler problems first</b> and use their answers as the starting point.</p>
   <div class="cols">
     <div class="stack">
       <div class="card plain">
@@ -637,15 +721,21 @@
     </div>
     <div data-widget="pretrain"></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections to other lectures</h3>
+    <ul class="conn">
+      <li><span class="tag back">Builds on</span><span><a href="ch08-3.html#/s-init">Parameter initialization (L8)</a>: pretraining is a smarter initialization.</span></li>
+    </ul>
+  </div>
 </section>
 
 <!-- ============================================================ -->
-<section class="slide" id="s-pretrain-variants" data-part="B" data-title="Transfer learning & teacher hints" data-stages="init,loss">
+<section class="slide" id="s-pretrain-variants" data-part="Part B · Strategies & meta-algorithms (8.7)" data-title="Transfer learning & teacher hints" data-stages="init,loss">
   <div class="slide-head">
     <span class="kicker">Part B · 8.7.4</span>
     <h2>Variations: deeper init, transfer learning, teacher → student hints</h2>
     <div class="stages"></div>
   </div>
+  <p class="bigidea">Copy layers from a trained network (<b>transfer</b>) or give a student network <b>hints</b> from a teacher.</p>
   <div class="cols">
     <div class="stack">
       <div class="card">
@@ -666,15 +756,21 @@
     </div>
     <div data-widget="pretrainVariants"></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections to other lectures</h3>
+    <ul class="conn">
+      <li><span class="tag fwd">Used in</span><span><a href="ch09.html#/s-cnn-arch">CNNs (L10)</a>: ImageNet-pretrained backbones are the standard starting point for vision tasks.</span></li>
+    </ul>
+  </div>
 </section>
 
 <!-- ============================================================ -->
-<section class="slide" id="s-design" data-part="B" data-title="Designing models to aid optimization" data-stages="forward,backward,loss">
+<section class="slide" id="s-design" data-part="Part B · Strategies & meta-algorithms (8.7)" data-title="Designing models to aid optimization" data-stages="forward,backward,loss">
   <div class="slide-head">
     <span class="kicker">Part B · 8.7.5</span>
     <h2>Designing models to aid optimization</h2>
     <div class="stages"></div>
   </div>
+  <p class="bigidea">It is usually <b>more effective to change the model</b> than the optimizer: linear-ish units, skip connections, auxiliary heads.</p>
   <div class="cols">
     <div class="stack">
       <div class="card plain">
@@ -694,15 +790,22 @@
     </div>
     <div data-widget="gradFlow"></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections to other lectures</h3>
+    <ul class="conn">
+      <li><span class="tag back">Builds on</span><span><a href="ch06-1.html#/s-hidden">ReLU hidden units (L4)</a> and <a href="ch06-1.html#/s-sigmoid-tanh">sigmoid saturation (L4)</a>.</span></li>
+      <li><span class="tag fwd">Leads to</span><span><a href="ch10.html#/s-lstm">LSTM (L11)</a>: a recurrent design whose self-loop lets gradients flow over long time spans.</span></li>
+    </ul>
+  </div>
 </section>
 
 <!-- ============================================================ -->
-<section class="slide" id="s-continuation" data-part="B" data-title="Continuation methods" data-stages="init,loss">
+<section class="slide" id="s-continuation" data-part="Part B · Strategies & meta-algorithms (8.7)" data-title="Continuation methods" data-stages="init,loss">
   <div class="slide-head">
     <span class="kicker">Part B · 8.7.6</span>
     <h2>Continuation methods: start with an easy version of the problem</h2>
     <div class="stages"></div>
   </div>
+  <p class="bigidea">Solve a <b>blurred, easier</b> version of the loss first, then gradually sharpen it.</p>
   <div class="cols">
     <div class="stack">
       <div class="card plain">
@@ -721,15 +824,21 @@
     </div>
     <div data-widget="continuation" data-presets="wiggly"></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections to other lectures</h3>
+    <ul class="conn">
+      <li><span class="tag back">Builds on</span><span><a href="ch08-1.html#/s-local-global">Poor local/global correspondence (L7)</a>: the problem continuation methods attack.</span></li>
+    </ul>
+  </div>
 </section>
 
 <!-- ============================================================ -->
-<section class="slide" id="s-continuation-fail" data-part="B" data-title="When continuation fails" data-stages="init,loss">
+<section class="slide" id="s-continuation-fail" data-part="Part B · Strategies & meta-algorithms (8.7)" data-title="When continuation fails" data-stages="init,loss">
   <div class="slide-head">
     <span class="kicker">Part B · 8.7.6</span>
     <h2>When continuation fails, and why it still helps</h2>
     <div class="stages"></div>
   </div>
+  <p class="bigidea">Blurring can fail (too costly, never convex, wrong basin), but it still helps by <b>smoothing flat regions and noise</b>.</p>
   <div class="cols">
     <div class="stack">
       <div class="card warn">
@@ -757,12 +866,13 @@
 </section>
 
 <!-- ============================================================ -->
-<section class="slide" id="s-curriculum" data-part="B" data-title="Curriculum learning" data-stages="batch,loss">
+<section class="slide" id="s-curriculum" data-part="Part B · Strategies & meta-algorithms (8.7)" data-title="Curriculum learning" data-stages="batch,loss">
   <div class="slide-head">
     <span class="kicker">Part B · 8.7.6</span>
     <h2>Curriculum learning (shaping)</h2>
     <div class="stages"></div>
   </div>
+  <p class="bigidea">Show <b>easy examples first</b>, and gradually mix in harder ones — a stochastic mix works best.</p>
   <div class="cols">
     <div class="stack">
       <div class="card plain">
@@ -775,10 +885,15 @@
     </div>
     <div data-widget="curriculum"></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections to other lectures</h3>
+    <ul class="conn">
+      <li><span class="tag fwd">Used in</span><span>The reported experiment trained <a href="ch10.html#/s-lstm">LSTMs (L11)</a> on tasks with long-term dependencies.</span></li>
+    </ul>
+  </div>
 </section>
 
 <!-- ============================================================ -->
-<section class="slide" id="s-summary" data-part="end" data-title="Putting it all together" data-stages="init,batch,forward,loss,backward,update,final">
+<section class="slide" id="s-summary" data-part="Wrap-up" data-title="Putting it all together" data-stages="init,batch,forward,loss,backward,update,final">
   <div class="slide-head">
     <span class="kicker">Wrap-up</span>
     <h2>Putting it all together</h2>
@@ -814,7 +929,7 @@
 </section>
 
 <!-- ============================================================ -->
-<section class="slide" id="s-quiz" data-part="end" data-title="Check yourself (quiz)">
+<section class="slide" id="s-quiz" data-part="Wrap-up" data-title="Check yourself (quiz)">
   <div class="slide-head">
     <span class="kicker">Wrap-up</span>
     <h2>Check yourself</h2>
@@ -827,14 +942,6 @@
   </footer>
 </section>
 
-  </main>
-</div>
-
-<nav class="navbar" aria-label="Slide navigation">
-  <button id="prevBtn" class="nav-btn" type="button" aria-label="Previous slide">← <span class="txt">Previous</span></button>
-  <div id="where" class="where"></div>
-  <button id="nextBtn" class="nav-btn primary" type="button" aria-label="Next slide"><span class="txt">Next</span> →</button>
-</nav>
-
+</main>
 </body>
 </html>

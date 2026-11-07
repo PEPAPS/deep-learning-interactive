@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Numerical Optimization &amp; SGD</title>
+<meta name="description" content="Interactive notes for Deep Learning chapter 4.3–4.5 and 5.9: gradient descent, critical points, Jacobian and Hessian, condition number, Newton's method, constrained optimization (KKT), linear least squares, stochastic gradient descent.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232a78d6'/%3E%3Cpath d='M6 9c5 0 6 14 10 14s5-14 10-14' fill='none' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<link rel="stylesheet" href="../css/style.css?v=9">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script defer src="../js/core.js?v=9"></script>
+<script defer src="../js/course.js?v=9"></script>
+<script defer src="../js/quiz.js?v=9"></script>
+<script defer src="../js/lectures/ch08-6a.js?v=9"></script>
+<script defer src="../js/lectures/ch04-3.js?v=9"></script>
+</head>
+<body data-page="lecture" data-lecture="ch04-3">
+<script>
+window.TOPICS = {
+  init: [['s-gd', 'The start point decides which minimum you reach']],
+  batch: [['s-sgd', 'Minibatch gradient estimate']],
+  loss: [['s-critical', 'Critical points of the loss'], ['s-least-squares', 'Least-squares objective']],
+  backward: [['s-multi', 'Partial derivatives & the gradient'], ['s-jacobian-hessian', 'Jacobian & Hessian']],
+  update: [['s-gd', 'Gradient descent'], ['s-multi', 'Steepest descent & line search'], ['s-condition', 'Condition number & Newton'], ['s-constrained', 'Projection & KKT'], ['s-sgd', 'Stochastic gradient descent']]
+};
+</script>
+
+<main class="deck" id="deck">
+
+<section class="slide" id="s-title" data-part="Start here" data-title="Welcome: how to minimize">
+  <div class="slide-head">
+    <span class="kicker">Lecture 3 · Chapter 4.3 – 4.5 &amp; 5.9</span>
+    <h1>Numerical Optimization &amp; SGD</h1>
+    <p class="lede">Lectures 1–2 told us <em>what</em> to minimize (a loss such as MSE or a negative log-likelihood). This lecture is about <em>how</em>: follow the slope downhill (<b>gradient descent</b>), understand where it can stop (<b>critical points</b>), how <b>curvature</b> (the Hessian) makes it fast or slow, how to respect <b>constraints</b>, and how to scale to huge datasets with <b>stochastic gradient descent</b>.</p>
+  </div>
+  <div class="road">
+    <div class="card big"><span class="kicker">Part 1 · 4.3</span><h4>Gradient-based optimization</h4><ol><li>Derivatives &amp; gradient descent</li><li>Critical points</li><li>Gradient &amp; directional derivative</li><li>Jacobian, Hessian, condition number, Newton</li></ol><button class="btn primary go" type="button" data-goto="s-gd">Start →</button></div>
+    <div class="card big"><span class="kicker">Part 2 · 4.4 – 4.5 &amp; 5.9</span><h4>Constraints &amp; scaling up</h4><ol><li>Constrained optimization &amp; KKT</li><li>Example: linear least squares</li><li>Stochastic gradient descent</li></ol><button class="btn primary go" type="button" data-goto="s-constrained">Jump to Part 2 →</button></div>
+  </div>
+</section>
+
+<section class="slide" id="s-loop" data-part="Start here" data-title="Where this lecture fits" data-stages="batch,loss,backward,update">
+  <div class="slide-head"><span class="kicker">Start here</span><h2>Where this lecture fits in training</h2><div class="stages"></div></div>
+  <p class="bigidea">This lecture is the <b>engine of the loop</b>: steps 6–7 compute the gradient and move the weights. SGD also explains step 3 — why we use small random <b>minibatches</b>.</p>
+  <div class="stack"><div data-widget="loop"></div>
+    <div class="row3">
+      <div class="card plain"><h3><span class="dot"></span>First-order methods</h3><p>Use only the gradient (slope). Gradient descent and SGD — the methods actually used to train deep networks.</p></div>
+      <div class="card plain"><h3><span class="dot"></span>Second-order methods</h3><p>Also use the Hessian (curvature). Newton’s method — fast near minima, but expensive and attracted to saddles (Lecture 9 goes deeper).</p></div>
+      <div class="card plain"><h3><span class="dot"></span>Why it matters for deep learning</h3><p>Deep-learning losses have many local minima and saddle points, and few guarantees. We settle for a value that is “very low”, not provably minimal.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-gd" data-part="Part 1 · Gradient-based optimization (4.3)" data-title="Derivatives & gradient descent" data-stages="init,update">
+  <div class="slide-head"><span class="kicker">4.3 · Gradient-based optimization</span><h2>The derivative tells you which way is down</h2><div class="stages"></div></div>
+  <p class="bigidea">The derivative \(f'(x)\) is the <b>slope</b>: a small move ε changes f by about \(\epsilon f'(x)\). So step <b>against</b> the slope to go down. That is <b>gradient descent</b>.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <p><b>Optimization</b> = minimizing (or maximizing) a function \(f(x)\) by changing x. To maximize, minimize \(-f(x)\). The function is called the <b>objective function</b> or <b>criterion</b>; when minimizing, also the <b>cost</b>, <b>loss</b> or <b>error</b> function. The best x is written \(x^*=\arg\min f(x)\).</p>
+        <p>Because \(f(x-\epsilon\,\text{sign}(f'(x)))&lt;f(x)\) for small enough ε, repeatedly taking small steps opposite to the derivative decreases f.</p>
+      </div>
+      <div class="math">\[ f(x+\epsilon)\approx f(x)+\epsilon f'(x) \]<span class="eqno">slope = how a small input change scales into an output change</span>
+        \[ x\leftarrow x-\epsilon f'(x) \]<span class="eqno">gradient descent in 1-D</span></div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Objective / cost / loss</dt><dd>The function we minimize.</dd>
+        <dt>\(x^*=\arg\min_x f(x)\)</dt><dd>The x where f is smallest.</dd>
+        <dt>Derivative \(f'(x)=\frac{dy}{dx}\)</dt><dd>Slope of f at x.</dd>
+        <dt>Learning rate ε</dt><dd>Step size; too small = slow, too large = overshoot / diverge.</dd>
+        <dt>Local vs. global minimum</dt><dd>Lowest nearby point vs. lowest point anywhere.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>\(f(x)=x^2\), start x = 3, ε = 0.1. Slope \(f'(3)=2\cdot3=6\).</li>
+        <li>Update: \(x\leftarrow3-0.1\times6=2.4\). f drops from 9 to \(2.4^2=5.76\).</li>
+        <li>First-order prediction: \(f(x)-\epsilon f'(x)^2=9-0.1\times36=5.4\). The real value 5.76 is a little higher because the parabola curves up — curvature matters (Hessian slide).</li>
+        <li>Next step: \(f'(2.4)=4.8\Rightarrow x=2.4-0.48=1.92\) … each step multiplies x by \(1-2\epsilon=0.8\).</li>
+      </ol></div>
+    </div>
+    <div data-widget="gd1d"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch05-4.html#/s-prob-sl">Logistic regression (L2)</a>: it has no closed-form solution, so we need exactly this algorithm.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch06-5.html#/s-backprop-what">Back-propagation (L5)</a>: how to compute the slope for millions of weights at once.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-critical" data-part="Part 1 · Gradient-based optimization (4.3)" data-title="Critical points" data-stages="loss">
+  <div class="slide-head"><span class="kicker">4.3 · Critical points</span><h2>Where the slope is zero: minima, maxima, saddles</h2><div class="stages"></div></div>
+  <p class="bigidea">Where \(f'=0\) the derivative gives <b>no direction</b>. Such <b>critical points</b> can be minima, maxima or <b>saddle points</b>; the <b>second derivative</b> (in many dimensions, the Hessian’s eigenvalues) tells which.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li><b>Local minimum</b>: lower than all neighbours — tiny steps can’t decrease f. <b>Local maximum</b>: higher than all neighbours. <b>Saddle point</b>: neither.</li>
+          <li><b>Global minimum</b>: the absolute lowest value (there may be several).</li>
+          <li>Deep-learning losses have <b>many non-optimal local minima</b> and <b>many saddle points surrounded by flat regions</b>, so we usually settle for “very low”, not “minimal”.</li>
+          <li><b>Second-derivative test</b> (1-D): \(f'=0,f''&gt;0\) → min; \(f''&lt;0\) → max; \(f''=0\) → inconclusive.</li>
+          <li>In many dimensions: Hessian <b>positive definite</b> (all eigenvalues &gt; 0) → min; <b>negative definite</b> → max; mixed signs → saddle; any zero eigenvalue with the rest same sign → inconclusive.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Critical / stationary point</dt><dd>\(f'(x)=0\) (all gradient entries zero in many dimensions).</dd>
+        <dt>Second derivative \(f''\)</dt><dd>Rate of change of the slope = curvature.</dd>
+        <dt>Eigenvalue</dt><dd>Curvature along one special direction (eigenvector) of the Hessian.</dd>
+        <dt>Positive definite</dt><dd>All eigenvalues &gt; 0: curves upward in every direction.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>\(f(x)=x^3-3x\): \(f'(x)=3x^2-3=0\Rightarrow x=\pm1\).</li>
+        <li>\(f''(x)=6x\): at x = 1, \(f''=6&gt;0\) → local minimum (f = −2); at x = −1, \(f''=-6&lt;0\) → local maximum (f = 2).</li>
+        <li>2-D: \(f=x^2-y^2\) at (0, 0): gradient (2x, −2y) = 0; Hessian \(\begin{bmatrix}2&0\\0&-2\end{bmatrix}\), eigenvalues 2 and −2 → saddle.</li>
+      </ol></div>
+    </div>
+    <div data-widget="criticalTest"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag fwd">Leads to</span><span><a href="ch08-1.html#/s-local-minima">Local minima (L7)</a> and <a href="ch08-1.html#/s-saddle">saddle points & plateaus (L7)</a> in real neural networks.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch08-6.html#/s-saddle">Newton at saddle points (L9)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-multi" data-part="Part 1 · Gradient-based optimization (4.3)" data-title="Gradient & directional derivative" data-stages="backward,update">
+  <div class="slide-head"><span class="kicker">4.3 · Many inputs</span><h2>The gradient and steepest descent</h2><div class="stages"></div></div>
+  <p class="bigidea">The <b>gradient</b> \(\nabla_{\mathbf x}f\) collects all partial derivatives. It points <b>straight uphill</b>; the negative gradient is the direction of <b>fastest decrease</b>. Step: \(\mathbf x'=\mathbf x-\epsilon\nabla_{\mathbf x}f(\mathbf x)\).</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \frac{\partial}{\partial\alpha}f(\mathbf x+\alpha\mathbf u)\Big|_{\alpha=0}=\mathbf u^{\top}\nabla_{\mathbf x}f(\mathbf x) \]<span class="eqno">directional derivative</span>
+        \[ \min_{\mathbf u,\ \mathbf u^\top\mathbf u=1}\mathbf u^{\top}\nabla_{\mathbf x}f(\mathbf x)=\min_{\mathbf u}\|\mathbf u\|_2\,\|\nabla_{\mathbf x}f(\mathbf x)\|_2\cos\theta \]<span class="eqno">(4.3–4.4)</span>
+        \[ \mathbf x'=\mathbf x-\epsilon\nabla_{\mathbf x}f(\mathbf x) \]<span class="eqno">(4.5) steepest descent</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li><b>Partial derivative</b> \(\frac{\partial}{\partial x_i}f\): how f changes if only \(x_i\) increases.</li>
+          <li>Critical points in many dimensions: <b>every</b> element of the gradient is 0.</li>
+          <li>With ‖u‖ = 1, only cos θ depends on u, and it’s smallest (−1) when u points <b>opposite</b> to the gradient.</li>
+          <li>Choosing ε: a small constant; or solve for the ε that makes the directional derivative vanish; or try several and keep the best — a <b>line search</b>.</li>
+          <li>Converges when the gradient is (almost) zero. Sometimes we can skip iterating and solve \(\nabla f=0\) directly (like the normal equations).</li>
+          <li>The discrete-space version (repeatedly make the best small move) is called <b>hill climbing</b>.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Gradient \(\nabla_{\mathbf x}f\)</dt><dd>Vector of partial derivatives \((\partial f/\partial x_1,\dots,\partial f/\partial x_n)\).</dd>
+        <dt>Unit vector u</dt><dd>A direction with length 1.</dd>
+        <dt>Directional derivative</dt><dd>Slope of f when moving along u.</dd>
+        <dt>Line search</dt><dd>Try several step sizes along a direction, keep the best.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>\(f(x,y)=x^2+3y^2\) at (1, 1): \(\nabla f=(2x,6y)=(2,6)\), \(\|\nabla f\|=\sqrt{4+36}=6.32\).</li>
+        <li>Along u = (1, 0): slope \(=\mathbf u^\top\nabla f=2\) (uphill). Along \(-\nabla f/\|\nabla f\|=(-0.316,-0.949)\): slope \(=-6.32\) — the steepest possible.</li>
+        <li>Step with ε = 0.1: \((1,1)-0.1(2,6)=(0.8,0.4)\); f falls from 4 to \(0.64+0.48=1.12\).</li>
+      </ol></div>
+    </div>
+    <div data-widget="dirDeriv"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag fwd">Leads to</span><span><a href="ch08-6.html#/s-steepest">Line search & the zig-zag (L9)</a>.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch06-5.html#/s-chain">Chain rule (L5)</a>: how to get \(\nabla f\) for a network built from many functions.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-jacobian-hessian" data-part="Part 1 · Gradient-based optimization (4.3)" data-title="Jacobian & Hessian" data-stages="backward,update">
+  <div class="slide-head"><span class="kicker">4.3.1 · Beyond the gradient</span><h2>Jacobian and Hessian: derivatives of derivatives</h2><div class="stages"></div></div>
+  <p class="bigidea">The <b>Hessian</b> (all second derivatives) measures <b>curvature</b>. It predicts how good a gradient step will be: with too much curvature in the step direction, a step can even go <b>uphill</b>.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ J_{i,j}=\frac{\partial}{\partial x_j}f(\mathbf x)_i\qquad\boldsymbol H(f)(\mathbf x)_{i,j}=\frac{\partial^2}{\partial x_i\partial x_j}f(\mathbf x)=\boldsymbol H_{j,i} \]<span class="eqno">(4.6–4.7)</span>
+        \[ f(\mathbf x)\approx f(\mathbf x^{(0)})+(\mathbf x-\mathbf x^{(0)})^{\top}\mathbf g+\tfrac12(\mathbf x-\mathbf x^{(0)})^{\top}\boldsymbol H(\mathbf x-\mathbf x^{(0)}) \]<span class="eqno">(4.8)</span>
+        \[ f(\mathbf x^{(0)}-\epsilon\mathbf g)\approx f(\mathbf x^{(0)})-\epsilon\,\mathbf g^{\top}\mathbf g+\tfrac12\epsilon^2\,\mathbf g^{\top}\boldsymbol H\mathbf g,\qquad\epsilon^*=\frac{\mathbf g^{\top}\mathbf g}{\mathbf g^{\top}\boldsymbol H\mathbf g} \]<span class="eqno">(4.9–4.10)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li><b>Jacobian</b>: all first derivatives of a function whose input <em>and</em> output are vectors (\(\mathbb R^m\to\mathbb R^n\) gives an n×m matrix).</li>
+          <li>1-D curvature: f″ = 0 → a straight line, a step of ε along a gradient of 1 decreases f by exactly ε. f″ &lt; 0 → it decreases <b>more</b>; f″ &gt; 0 → <b>less</b>.</li>
+          <li>The Hessian is the Jacobian of the gradient; symmetric almost everywhere in deep learning → real eigenvalues, orthogonal eigenvectors. The second derivative along unit d is \(\mathbf d^\top\boldsymbol H\mathbf d\): an eigenvalue along an eigenvector, a weighted average of eigenvalues otherwise.</li>
+          <li>(4.9) has three parts: the current value, the improvement from the slope, and a <b>curvature correction</b>. If the correction is too big the step goes uphill; if \(\mathbf g^\top\boldsymbol H\mathbf g\le0\) the model says “bigger is always better” (not trustworthy for large ε).</li>
+          <li>Worst case (g along the top eigenvector): \(\epsilon^*=1/\lambda_{\max}\). The Hessian’s eigenvalues set the scale of the learning rate.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Jacobian J</dt><dd>Matrix of first partial derivatives of a vector function.</dd>
+        <dt>Hessian H</dt><dd>Matrix of second partial derivatives of a scalar function.</dd>
+        <dt>Curvature</dt><dd>How fast the slope changes.</dd>
+        <dt>Taylor approximation</dt><dd>Approximate f near a point using its value, slope and curvature.</dd>
+        <dt>g</dt><dd>Gradient at \(\mathbf x^{(0)}\).</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Jacobian of \(\mathbf f(x,y)=(x^2y,\;5x+\sin y)\): \(\begin{bmatrix}2xy&x^2\\5&\cos y\end{bmatrix}\); at (1, 0): \(\begin{bmatrix}0&1\\5&1\end{bmatrix}\).</li>
+        <li>Hessian of \(f=x^2+3xy+2y^2\): \(\begin{bmatrix}2&3\\3&4\end{bmatrix}\) (symmetric).</li>
+        <li>Optimal step: \(\boldsymbol H=\text{diag}(1,10)\), \(\mathbf x^{(0)}=(1,1)\) → \(\mathbf g=\boldsymbol H\mathbf x=(1,10)\), \(\mathbf g^\top\mathbf g=101\), \(\mathbf g^\top\boldsymbol H\mathbf g=1\cdot1+10\cdot100=1001\) → \(\epsilon^*=101/1001=0.101\approx1/\lambda_{\max}=0.1\).</li>
+      </ol></div>
+    </div>
+    <div data-widget="stepCurvature"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag fwd">Leads to</span><span><a href="ch08-6.html#/s-taylor">Slope vs. curvature (L9)</a> and <a href="ch08-6.html#/s-cost">why the Hessian is too big for networks (L9)</a>.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch06-5.html#/s-chain">Back-propagation (L5)</a> multiplies Jacobians layer by layer.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-condition" data-part="Part 1 · Gradient-based optimization (4.3)" data-title="Condition number & Newton" data-stages="update">
+  <div class="slide-head"><span class="kicker">4.3.1 · Ill-conditioning</span><h2>Condition number, Newton’s method, Lipschitz</h2><div class="stages"></div></div>
+  <p class="bigidea">If curvature is very different in different directions (large <b>condition number</b>), gradient descent zig-zags with a tiny step. <b>Newton’s method</b> rescales by \(\boldsymbol H^{-1}\) and jumps to the bottom of the local bowl.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \kappa=\frac{\max_i|\lambda_i|}{\min_i|\lambda_i|} \]<span class="eqno">condition number</span>
+        \[ \mathbf x^*=\mathbf x^{(0)}-\boldsymbol H(f)(\mathbf x^{(0)})^{-1}\nabla_{\mathbf x}f(\mathbf x^{(0)}) \]<span class="eqno">(4.12) Newton</span>
+        \[ \forall\mathbf x,\mathbf y:\ |f(\mathbf x)-f(\mathbf y)|\le\mathcal L\,\|\mathbf x-\mathbf y\|_2 \]<span class="eqno">(4.13) Lipschitz continuity</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>With a poor (large) condition number, the derivative grows fast in one direction and slowly in another; gradient descent doesn’t know it should prefer the slow direction.</li>
+          <li>The step must be small enough not to overshoot in the steep direction, which makes progress in the flat direction tiny.</li>
+          <li><b>Newton’s method</b>: positive-definite quadratic → reaches the minimum in <b>one</b> step; otherwise iterate. Great near a minimum, <b>harmful near a saddle</b> (it’s attracted to it). Gradient descent is not attracted to saddles unless the gradient points at them.</li>
+          <li><b>First-order</b> algorithms use only the gradient; <b>second-order</b> also use the Hessian.</li>
+          <li>Deep learning has few guarantees; sometimes we get some by assuming <b>Lipschitz</b> functions (bounded rate of change) — a weak, easy-to-satisfy constraint.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Condition number κ</dt><dd>Ratio of the largest to the smallest eigenvalue magnitude.</dd>
+        <dt>Ill-conditioned</dt><dd>κ is large: a long, narrow valley.</dd>
+        <dt>Newton’s method</dt><dd>Jump to the minimum of the local quadratic model.</dd>
+        <dt>Lipschitz constant \(\mathcal L\)</dt><dd>Maximum rate at which f can change per unit of distance.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Hessian eigenvalues 1 and 100 → \(\kappa=100\).</li>
+        <li>Gradient descent must use \(\epsilon&lt;2/100=0.02\) or it diverges along the steep direction.</li>
+        <li>Along the flat direction each step multiplies the error by \(1-0.02\times1=0.98\): reducing it 100× needs \(\ln0.01/\ln0.98\approx228\) steps. Newton: 1 step.</li>
+        <li>\(f(x)=\sin x\) is Lipschitz with \(\mathcal L=1\), because \(|\cos x|\le1\).</li>
+      </ol></div>
+    </div>
+    <div data-widget="playground" data-preset="newton" data-title="Ill-conditioning: gradient descent vs. Newton" data-sub="Raise the stretch κ (the condition number): gradient descent needs more and more steps, Newton still needs one."></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag fwd">Leads to</span><span><a href="ch08-1.html#/s-illcond">Ill-conditioning in neural nets (L7)</a>, <a href="ch08-3.html#/s-momentum">momentum (L8)</a> and <a href="ch08-6.html#/s-newton">Newton & its approximations (L9)</a>.</span></li>
+  </ul></div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-constrained" data-part="Part 2 · Constraints & scaling up (4.4–4.5, 5.9)" data-title="Constrained optimization & KKT" data-stages="update">
+  <div class="slide-head"><span class="kicker">4.4 · Constrained optimization</span><h2>Optimizing inside a feasible set: projection and KKT</h2><div class="stages"></div></div>
+  <p class="bigidea">To minimize only over allowed points (e.g. ‖x‖ ≤ 1): <b>project</b> after each step, <b>reparametrize</b>, or use the <b>generalized Lagrangian</b> (KKT), which turns a constrained problem into an unconstrained min–max problem.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mathbb S=\{\mathbf x\mid\forall i,\ g^{(i)}(\mathbf x)=0\ \text{and}\ \forall j,\ h^{(j)}(\mathbf x)\le0\} \]
+        \[ L(\mathbf x,\boldsymbol\lambda,\boldsymbol\alpha)=f(\mathbf x)+\sum_i\lambda_i g^{(i)}(\mathbf x)+\sum_j\alpha_j h^{(j)}(\mathbf x) \]<span class="eqno">(4.14) generalized Lagrangian</span>
+        \[ \min_{\mathbf x}\max_{\boldsymbol\lambda}\max_{\boldsymbol\alpha,\boldsymbol\alpha\ge0}L(\mathbf x,\boldsymbol\lambda,\boldsymbol\alpha)=\min_{\mathbf x\in\mathbb S}f(\mathbf x) \]<span class="eqno">(4.15–4.16)</span>
+        \[ \max_{\boldsymbol\lambda}\max_{\boldsymbol\alpha\ge0}L=\begin{cases}f(\mathbf x)&\text{if all constraints hold}\\ \infty&\text{if any is violated}\end{cases}\qquad\boldsymbol\alpha\odot\boldsymbol h(\mathbf x)=\mathbf 0 \]<span class="eqno">(4.17–4.18), complementary slackness</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Points inside the allowed set \(\mathbb S\) are <b>feasible</b>. A common constraint is a norm limit such as \(\|\mathbf x\|\le1\).</li>
+          <li><b>Projection:</b> take a normal gradient step, then project back into \(\mathbb S\). (With a line search, only try feasible steps, or project every point on the line.)</li>
+          <li><b>Reparametrize:</b> e.g. for unit-norm \(\mathbf x\in\mathbb R^2\), minimize \(g(\theta)=f([\cos\theta,\sin\theta])\) over θ. Needs creativity for each problem.</li>
+          <li><b>KKT:</b> new variables λ (equality) and α ≥ 0 (inequality) — the KKT multipliers. The inner max punishes any violation with ∞, so infeasible points can’t win.</li>
+          <li><b>Active</b> inequality: \(h(\mathbf x)=0\) at the solution. An inactive one has \(\alpha=0\). Either the solution sits on the boundary (and α pushes back), or the constraint has no influence.</li>
+          <li><b>KKT conditions</b> (necessary, not always sufficient): ∇L = 0; all constraints on x and multipliers hold; complementary slackness \(\boldsymbol\alpha\odot\boldsymbol h=\mathbf 0\).</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Feasible point</dt><dd>A point that satisfies all constraints.</dd>
+        <dt>Equality / inequality constraint</dt><dd>\(g(\mathbf x)=0\) / \(h(\mathbf x)\le0\).</dd>
+        <dt>KKT multipliers λ, α</dt><dd>Extra variables that price each constraint.</dd>
+        <dt>⊙</dt><dd>Element-wise (Hadamard) product.</dd>
+        <dt>Active constraint</dt><dd>One that holds with equality at the solution.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Minimize \(f(x)=x\) subject to \(x\ge1\), i.e. \(h(x)=1-x\le0\).</li>
+        <li>\(L=x+\alpha(1-x)\). \(\partial L/\partial x=1-\alpha=0\Rightarrow\alpha=1\ge0\).</li>
+        <li>Since α &gt; 0, slackness \(\alpha\,h(x)=0\) forces \(h(x)=0\Rightarrow x=1\): the constraint is active, the answer sits on the boundary.</li>
+        <li>Projection example: step lands at (1.2, 0.9), norm 1.5 &gt; 1 → project to \((1.2,0.9)/1.5=(0.8,0.6)\).</li>
+      </ol></div>
+    </div>
+    <div data-widget="projectedGD"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag fwd">Leads to</span><span><a href="ch07.html#/s-norm-penalty">Norm penalties as constraints (L6)</a>: weight decay is the Lagrangian of a norm constraint; max-norm constraints use projection.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-least-squares" data-part="Part 2 · Constraints & scaling up (4.4–4.5, 5.9)" data-title="Example: linear least squares" data-stages="loss,update">
+  <div class="slide-head"><span class="kicker">4.5 · Example</span><h2>Linear least squares: gradient descent, Newton and a constraint</h2><div class="stages"></div></div>
+  <p class="bigidea">One problem, three tools: <b>gradient descent</b> walks down \(\frac12\|\mathbf A\mathbf x-\mathbf b\|^2\); <b>Newton</b> solves it in one step; with \(\mathbf x^\top\mathbf x\le1\), the <b>Lagrange multiplier λ</b> acts exactly like a weight-decay coefficient.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ f(\mathbf x)=\tfrac12\|\mathbf A\mathbf x-\mathbf b\|_2^2,\qquad\nabla_{\mathbf x}f(\mathbf x)=\mathbf A^{\top}(\mathbf A\mathbf x-\mathbf b)=\mathbf A^{\top}\mathbf A\mathbf x-\mathbf A^{\top}\mathbf b \]<span class="eqno">(4.21–4.22)</span>
+        \[ \text{repeat: }\ \mathbf x\leftarrow\mathbf x-\epsilon\big(\mathbf A^{\top}\mathbf A\mathbf x-\mathbf A^{\top}\mathbf b\big)\ \text{ until }\|\nabla f\|&lt;\delta \]<span class="eqno">Algorithm 4.1</span>
+        \[ L(\mathbf x,\lambda)=f(\mathbf x)+\lambda(\mathbf x^{\top}\mathbf x-1),\qquad\mathbf x=(\mathbf A^{\top}\mathbf A+2\lambda\mathbf I)^{-1}\mathbf A^{\top}\mathbf b,\qquad\frac{\partial L}{\partial\lambda}=\mathbf x^{\top}\mathbf x-1 \]<span class="eqno">(4.23–4.27)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Specialized linear algebra solves this fast, but it’s a perfect test case for gradient methods.</li>
+          <li>f is exactly quadratic, so Newton’s quadratic model is exact → global minimum in <b>one</b> step.</li>
+          <li>With the constraint: first try the smallest-norm unconstrained solution \(\mathbf x=\mathbf A^+\mathbf b\) (Moore–Penrose pseudoinverse). If it’s feasible, done. Otherwise the constraint is active.</li>
+          <li>Setting \(\partial L/\partial\mathbf x=0\) gives \(\mathbf x(\lambda)\). If \(\|\mathbf x\|&gt;1\), \(\partial L/\partial\lambda&gt;0\) → increase λ (gradient <b>ascent</b> on λ) → bigger penalty → smaller x. Repeat until \(\|\mathbf x\|=1\).</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>\(\mathbf A^+\)</dt><dd>Moore–Penrose pseudoinverse: gives the smallest-norm least-squares solution.</dd>
+        <dt>δ</dt><dd>Tolerance: stop when the gradient is smaller than δ.</dd>
+        <dt>Gradient ascent on λ</dt><dd>Increase λ while the constraint is violated.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>\(\mathbf A=\mathbf I\), \(\mathbf b=(3,4)\). Unconstrained answer \(\mathbf x=\mathbf b\), norm 5 &gt; 1 → infeasible.</li>
+        <li>\(\mathbf x(\lambda)=(\mathbf I+2\lambda\mathbf I)^{-1}\mathbf b=\frac{\mathbf b}{1+2\lambda}\), norm \(\frac{5}{1+2\lambda}\).</li>
+        <li>Need norm 1: \(1+2\lambda=5\Rightarrow\lambda=2\), \(\mathbf x=(0.6,0.8)\). λ = 2 is exactly the weight-decay strength that enforces the constraint.</li>
+        <li>One GD step from x = 0 with ε = 0.5: \(\mathbf x\leftarrow0-0.5(\mathbf x-\mathbf b)=(1.5,2)\).</li>
+      </ol></div>
+    </div>
+    <div data-widget="lsqConstrained"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch05-1.html#/s-linreg">Normal equations (L1)</a>: the same problem solved in closed form.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch07.html#/s-l2">L2 regularization (L6)</a>: \((\mathbf A^\top\mathbf A+2\lambda\mathbf I)^{-1}\) is the weight-decay solution.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-sgd" data-part="Part 2 · Constraints & scaling up (4.4–4.5, 5.9)" data-title="Stochastic gradient descent" data-stages="batch,update">
+  <div class="slide-head"><span class="kicker">5.9 · Stochastic gradient descent</span><h2>SGD: estimate the gradient from a small minibatch</h2><div class="stages"></div></div>
+  <p class="bigidea">The gradient is an <b>average over all examples</b>, so a small random <b>minibatch</b> gives a cheap, unbiased estimate. Cost per update depends on the minibatch size m′, <b>not</b> on the dataset size m.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ J(\boldsymbol\theta)=\mathbb E_{\mathbf x,y\sim\hat p_{\text{data}}}L(\mathbf x,y,\boldsymbol\theta)=\frac1m\sum_{i=1}^{m}L\big(\mathbf x^{(i)},y^{(i)},\boldsymbol\theta\big),\quad L=-\log p(y\mid\mathbf x;\boldsymbol\theta) \]<span class="eqno">(5.96)</span>
+        \[ \nabla_{\boldsymbol\theta}J(\boldsymbol\theta)=\frac1m\sum_{i=1}^{m}\nabla_{\boldsymbol\theta}L\big(\mathbf x^{(i)},y^{(i)},\boldsymbol\theta\big)\quad\text{— costs }O(m) \]<span class="eqno">(5.97)</span>
+        \[ \mathbf g=\frac{1}{m'}\nabla_{\boldsymbol\theta}\sum_{i=1}^{m'}L\big(\mathbf x^{(i)},y^{(i)},\boldsymbol\theta\big),\qquad\boldsymbol\theta\leftarrow\boldsymbol\theta-\epsilon\,\mathbf g \]<span class="eqno">(5.98–5.99)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Generalization needs big datasets, but exact gradients on big datasets are slow: billions of examples → one step takes forever.</li>
+          <li>Sample a minibatch \(\mathbb B=\{\mathbf x^{(1)},\dots,\mathbf x^{(m')}\}\) uniformly from the training set, with m′ from 1 to a few hundred, kept fixed as m grows.</li>
+          <li>Updates may never reach an exact local minimum in reasonable time, but they find a very low cost quickly.</li>
+          <li>As m → ∞, the model reaches its best test error before SGD has even seen every example → asymptotic cost of training is <b>O(1)</b> in m.</li>
+          <li>This is why deep learning scaled: from medium datasets (tens of thousands of examples, 2006) to huge industrial ones.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Per-example loss L</dt><dd>Loss on one example, here the negative log-likelihood.</dd>
+        <dt>Minibatch \(\mathbb B\), size m′</dt><dd>Small random subset used for one update.</dd>
+        <dt>Stochastic</dt><dd>Random: each update uses a different random minibatch.</dd>
+        <dt>O(m)</dt><dd>Cost grows proportionally with m.</dd>
+        <dt>Epoch</dt><dd>One pass over the whole training set (m/m′ updates).</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>m = 1 000 000 examples, m′ = 100.</li>
+        <li>Exact gradient: 1 000 000 per-example gradients per step. Minibatch: 100 → <b>10 000× cheaper</b>.</li>
+        <li>Price: noise. The minibatch average has standard error \(\sigma/\sqrt{100}=0.1\sigma\) (σ = std of per-example gradients) — usually good enough to point downhill.</li>
+        <li>One epoch = \(10^6/100=10\,000\) updates for the cost of a single exact gradient step.</li>
+      </ol></div>
+    </div>
+    <div data-widget="sgdVsGd"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch05-4.html#/s-variance">Standard error σ/√m (L2)</a>.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch08-1.html#/s-minibatch">Batch & minibatch algorithms (L7)</a> and <a href="ch08-3.html#/s-sgd">SGD with learning-rate decay (L8)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-summary" data-part="Wrap-up" data-title="Summary: how it all connects" data-stages="batch,loss,backward,update">
+  <div class="slide-head"><span class="kicker">Wrap-up</span><h2>Summary: how it all connects</h2><div class="stages"></div></div>
+  <p class="bigidea">Follow \(-\nabla f\) downhill; it can stop at any critical point. <b>Curvature</b> (Hessian eigenvalues, condition number) decides how fast and with what step size. <b>Constraints</b> become multipliers. <b>Minibatches</b> make every step cheap.</p>
+  <div class="card" style="padding:0;overflow:hidden"><div class="scroll-x"><table class="data-table">
+    <thead><tr><th>Concept</th><th>Formula</th><th>Key fact</th><th>Comes back in</th></tr></thead>
+    <tbody>
+      <tr><td>Gradient descent</td><td>\(\mathbf x\leftarrow\mathbf x-\epsilon\nabla f\)</td><td>−∇f is the steepest direction</td><td>L5, L7, L8</td></tr>
+      <tr><td>Critical point</td><td>\(\nabla f=0\)</td><td>min, max or saddle</td><td>L7 local minima & saddles</td></tr>
+      <tr><td>Second-derivative test</td><td>eigenvalues of H</td><td>all + → min, mixed → saddle</td><td>L9 Newton at saddles</td></tr>
+      <tr><td>Optimal step</td><td>\(\epsilon^*=\mathbf g^\top\mathbf g/\mathbf g^\top\boldsymbol H\mathbf g\)</td><td>≈ 1/λ_max</td><td>L8 learning-rate choice</td></tr>
+      <tr><td>Condition number</td><td>\(\lambda_{\max}/\lambda_{\min}\)</td><td>large → zig-zag, slow</td><td>L7 ill-conditioning, L8 momentum</td></tr>
+      <tr><td>Newton</td><td>\(\mathbf x-\boldsymbol H^{-1}\nabla f\)</td><td>1 step on a quadratic</td><td>L9 second-order methods</td></tr>
+      <tr><td>KKT</td><td>\(f+\sum\lambda g+\sum\alpha h\)</td><td>α ⊙ h = 0</td><td>L6 norm penalties</td></tr>
+      <tr><td>SGD</td><td>\(\mathbf g=\frac1{m'}\sum_{\mathbb B}\nabla L\)</td><td>cost per step independent of m</td><td>L7, L8 (every network)</td></tr>
+    </tbody>
+  </table></div></div>
+  <div class="row3" style="margin-top:16px">
+    <div class="card plain"><h3><span class="dot"></span>Remember</h3><p>Gradient = direction; Hessian = how far; minibatch = cheap estimate of the gradient.</p></div>
+    <div class="card plain"><h3><span class="dot"></span>Next lecture</h3><p><a href="ch06-1.html">Deep feedforward networks</a>: the model whose loss we will minimize with all of this.</p></div>
+    <div class="card fit"><h3><span class="dot"></span>Check yourself</h3><p>Ten quiz questions with explanations.</p><button class="btn primary" type="button" data-goto="s-quiz" style="margin-top:6px">Take the quiz →</button></div>
+  </div>
+</section>
+
+<section class="slide" id="s-quiz" data-part="Wrap-up" data-title="Check yourself (quiz)">
+  <div class="slide-head"><span class="kicker">Wrap-up</span><h2>Check yourself</h2><p class="lede">Pick an answer to see whether it is right and why.</p></div>
+  <div data-widget="quiz"></div>
+  <footer class="credits">Study notes for Deep Learning, chapters 4.3–4.5 and 5.9. Equation numbers follow Goodfellow, Bengio &amp; Courville, <em>Deep Learning</em> (MIT Press, 2016). Explanations, diagrams and demos are original.</footer>
+</section>
+
+</main>
+</body>
+</html>

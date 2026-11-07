@@ -68,13 +68,13 @@ const Theme = {
   },
   set(t) {
     document.documentElement.dataset.theme = t;
-    try { localStorage.setItem('dl8-theme', t); } catch (e) { /* storage unavailable */ }
+    try { localStorage.setItem('dlx-theme', t); } catch (e) { /* storage unavailable */ }
     Colors.invalidate();
     window.dispatchEvent(new Event('themechange'));
   },
   init() {
     try {
-      const t = localStorage.getItem('dl8-theme');
+      const t = localStorage.getItem('dlx-theme');
       if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
     } catch (e) { /* ignore */ }
     if (window.matchMedia) {
@@ -427,44 +427,32 @@ function renderMath(root) {
   }
 }
 
-/* ---------- training-loop stages (used by chips + overview) ---------- */
+/* ---------- training-loop stages (used by chips + overview) ----------
+   Each page defines window.TOPICS = { stageId: [[link, label], ...] }.
+   A link is either an in-page slide id ("s-dropout") or a URL ("ch07.html#/s-dropout"). */
 const STAGES = [
-  {
-    id: 'init', short: 'Init θ', name: 'Initialize the weights',
-    what: 'Before training starts, every weight needs a starting value. Where you start decides which valley you can reach: a good start can be connected to a good solution by an easy downhill path.',
-    topics: [['s-pretrain', 'Greedy supervised pretraining'], ['s-pretrain-variants', 'Transfer learning & teacher hints'], ['s-continuation', 'Continuation: solve easy versions first']]
-  },
-  {
-    id: 'batch', short: 'Minibatch', name: 'Sample a minibatch',
-    what: 'Pick a small random set of training examples. Which examples you show (and how often) shapes what the network learns first.',
-    topics: [['s-curriculum', 'Curriculum learning'], ['s-bn-test', 'BN statistics come from the minibatch']]
-  },
-  {
-    id: 'forward', short: 'Forward', name: 'Forward pass through the model',
-    what: 'Push the minibatch through the layers to get predictions. The architecture you choose here decides how easy the whole optimization will be.',
-    topics: [['s-bn-problem', 'Why layers interfere'], ['s-bn-how', 'Batch normalization'], ['s-bn-gamma', 'γ, β and where to put BN'], ['s-design', 'ReLU, skip connections, auxiliary heads']]
-  },
-  {
-    id: 'loss', short: 'Loss J(θ)', name: 'Compute the loss J(θ)',
-    what: 'Compare predictions with the targets and average the errors. This number is the "height" of the landscape at the current weights.',
-    topics: [['s-risk', 'Empirical risk J(θ)'], ['s-continuation', 'Blurred / easier versions of J'], ['s-pretrain-variants', 'Hint losses (teacher → student)'], ['s-design', 'Auxiliary-head losses']]
-  },
-  {
-    id: 'backward', short: 'Backward ∇J', name: 'Backward pass: gradient (and curvature)',
-    what: 'Backpropagation computes the slope ∇J for every weight. Second-order methods also want the curvature (Hessian H), or an approximation of it.',
-    topics: [['s-taylor', 'Slope vs. curvature'], ['s-bn-backprop', 'Backprop through μ and σ'], ['s-design', 'Skip connections keep gradients alive']]
-  },
-  {
-    id: 'update', short: 'Update θ', name: 'Update the weights',
-    what: 'Use the gradient (and maybe curvature) to choose a direction and a step size, then move the weights. This is where the "optimizer" lives.',
-    topics: [['s-newton', "Newton's method"], ['s-saddle', 'Regularized Newton'], ['s-steepest', 'Line search'], ['s-cg', 'Conjugate gradients'], ['s-bfgs', 'BFGS'], ['s-lbfgs', 'L-BFGS']]
-  },
-  {
-    id: 'final', short: 'Final θ / test', name: 'Final weights & testing',
-    what: 'After many loops, decide which weights to keep and how the model behaves on new data, one example at a time.',
-    topics: [['s-polyak', 'Polyak averaging'], ['s-bn-test', 'BN running averages at test time']]
-  }
+  { id: 'data', short: 'Data & task', name: 'Define the task and collect data',
+    what: 'Decide what the model should do (classify, regress, translate…), how success is measured, and which examples it will learn from. Split the data into training, validation and test sets.' },
+  { id: 'init', short: 'Init θ', name: 'Build the model & initialize the weights',
+    what: 'Choose the architecture (layers, units, activations) and give every weight a starting value. The start decides which valley the training can reach.' },
+  { id: 'batch', short: 'Minibatch', name: 'Sample a minibatch',
+    what: 'Pick a small random set of training examples. Which examples you show, and how often, shapes what the network learns.' },
+  { id: 'forward', short: 'Forward', name: 'Forward pass through the model',
+    what: 'Push the minibatch through the layers to get predictions. The architecture decides what the network can represent and how easy it is to optimize.' },
+  { id: 'loss', short: 'Loss J(θ)', name: 'Compute the loss J(θ)',
+    what: 'Compare predictions with targets and average the errors, plus any regularization penalty. This number is the “height” of the landscape at the current weights.' },
+  { id: 'backward', short: 'Backward ∇J', name: 'Backward pass: compute the gradient',
+    what: 'Back-propagation applies the chain rule backwards through the network to get ∂J/∂θ for every weight.' },
+  { id: 'update', short: 'Update θ', name: 'Update the weights',
+    what: 'Use the gradient (and maybe curvature or past gradients) to choose a direction and step size, then move the weights. This is the optimizer.' },
+  { id: 'final', short: 'Evaluate', name: 'Validate, stop, and test',
+    what: 'Check performance on held-out data, decide when to stop, pick hyper-parameters, and finally measure the test error on data never used for training.' }
 ];
+function goLink(link) {
+  if (!link) return;
+  if (/^s-/.test(link)) Deck.goId(link);
+  else window.location.href = link;
+}
 
 /* ---------- widget registry ---------- */
 const Widgets = {};
@@ -486,29 +474,82 @@ function redrawWidgetsIn(root) {
   $$('[data-widget]', root).forEach(el => { if (el._w && el._w.redraw) el._w.redraw(); });
 }
 
-/* ---------- deck navigation ---------- */
-const PART_NAMES = {
-  intro: 'Start here',
-  A: 'Part A · Approximate second-order methods (8.6)',
-  B: 'Part B · Strategies & meta-algorithms (8.7)',
-  end: 'Wrap-up'
+/* ---------- course registry helpers (data lives in js/course.js) ---------- */
+const Course = {
+  list() { return (window.COURSE && COURSE.lectures) || []; },
+  isHub() { return document.body.dataset.page === 'hub'; },
+  id() { return document.body.dataset.lecture; },
+  idx() { return this.list().findIndex(l => l.id === this.id()); },
+  current() { return this.list()[this.idx()] || null; },
+  prev() { const k = this.idx(); return k > 0 ? this.list()[k - 1] : null; },
+  next() { const k = this.idx(); return k >= 0 && k < this.list().length - 1 ? this.list()[k + 1] : null; },
+  href(l, slide) { return (this.isHub() ? 'lectures/' : '') + l.id + '.html' + (slide ? '#/' + slide : ''); },
+  home() { return this.isHub() ? 'index.html' : '../index.html'; }
 };
+
+const ICONS = {
+  menu: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>',
+  home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg>',
+  page: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>',
+  theme: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/></svg>'
+};
+
+/* Builds the top bar, sidebar and bottom navigation so every lecture page stays small and consistent. */
+function buildChrome() {
+  const lec = Course.current();
+  const hub = Course.isHub();
+  const iconBtn = (id, icon, txt, title) => h('button', { id, class: 'icon-btn', type: 'button', title, html: icon + (txt ? `<span class="txt">${txt}</span>` : '') });
+  const header = h('header', { class: 'topbar' },
+    hub ? null : iconBtn('menuBtn', ICONS.menu, '', 'Open slide list'),
+    h('div', { class: 'brand' },
+      h('b', {}, hub ? 'Deep Learning — Interactive Course Notes' : (lec ? lec.title : document.title)),
+      h('span', {}, hub ? 'Every lecture explained, illustrated and connected' : (lec ? `Lecture ${lec.n} · Chapter ${lec.ch}` : ''))),
+    hub ? null : h('a', { class: 'icon-btn', href: Course.home(), title: 'Course home', html: ICONS.home + '<span class="txt">Course</span>' }),
+    hub ? null : iconBtn('modeBtn', ICONS.page, 'One page', 'Switch between slides and one long page'),
+    iconBtn('themeBtn', ICONS.theme, 'Dark', 'Toggle light / dark theme'),
+    h('div', { class: 'progress' }));
+  document.body.prepend(header);
+  if (hub) return;
+  const main = $('main.deck');
+  const layout = h('div', { class: 'layout' }, h('nav', { id: 'toc', class: 'sidebar', 'aria-label': 'Slides' }), h('div', { class: 'scrim' }));
+  main.replaceWith(layout);
+  layout.append(main);
+  document.body.append(h('nav', { class: 'navbar', 'aria-label': 'Slide navigation' },
+    h('button', { id: 'prevBtn', class: 'nav-btn', type: 'button', html: '← <span class="txt">Previous</span>' }),
+    h('div', { id: 'where', class: 'where' }),
+    h('button', { id: 'nextBtn', class: 'nav-btn primary', type: 'button', html: '<span class="txt">Next</span> →' })));
+}
+
+/* ---------- deck navigation ---------- */
 const Deck = {
   slides: [], i: 0, page: false,
   init() {
+    $('#themeBtn').addEventListener('click', () => Theme.set(Theme.current() === 'dark' ? 'light' : 'dark'));
+    this.updateThemeIcon();
+    window.addEventListener('themechange', () => this.updateThemeIcon());
+    $$('[data-goto]').forEach(b => b.addEventListener('click', () => goLink(b.dataset.goto)));
     this.slides = $$('.slide');
+    if (!this.slides.length) { // hub page: just draw widgets
+      initWidgetsIn(document);
+      let rt;
+      window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => redrawWidgetsIn(document), 120); });
+      window.addEventListener('themechange', () => redrawWidgetsIn(document));
+      return;
+    }
     const toc = $('#toc');
+    const lec = Course.current();
+    toc.append(h('a', { class: 'toc-home', href: Course.home() }, '← All lectures (course home)'));
+    if (lec) toc.append(h('div', { class: 'toc-lec' }, h('span', { class: 'kicker' }, `Lecture ${lec.n} · Ch ${lec.ch}`), h('b', {}, lec.title)));
     let part = null;
     this.slides.forEach((s, i) => {
       if (s.dataset.part !== part) {
         part = s.dataset.part;
-        toc.append(h('div', { class: 'toc-part' }, PART_NAMES[part] || part));
+        toc.append(h('div', { class: 'toc-part' }, part));
       }
       const b = h('button', { class: 'toc-item', type: 'button' }, h('span', { class: 'n' }, i + 1), h('span', {}, s.dataset.title));
       b.addEventListener('click', () => { this.go(i); document.body.classList.remove('toc-open'); });
       toc.append(b);
       s._toc = b;
-      // stage chips
       const holder = $('.stages', s);
       if (holder) {
         const on = (s.dataset.stages || '').split(',').filter(Boolean);
@@ -520,13 +561,22 @@ const Deck = {
         });
       }
     });
-    $('#prevBtn').addEventListener('click', () => this.go(this.i - 1));
-    $('#nextBtn').addEventListener('click', () => this.go(this.i + 1));
+    if (Course.list().length) {
+      toc.append(h('div', { class: 'toc-part' }, 'All lectures'));
+      Course.list().forEach(l => toc.append(h('a', { class: 'toc-item' + (l.id === Course.id() ? ' active-lec' : ''), href: Course.href(l) },
+        h('span', { class: 'n' }, 'L' + l.n), h('span', {}, `${l.title} `, h('span', { class: 'muted' }, `(${l.ch})`)))));
+    }
+    $('#prevBtn').addEventListener('click', () => {
+      if (this.i === 0 && Course.prev()) location.href = Course.href(Course.prev());
+      else this.go(this.i - 1);
+    });
+    $('#nextBtn').addEventListener('click', () => {
+      if (this.i === this.slides.length - 1 && Course.next()) location.href = Course.href(Course.next());
+      else this.go(this.i + 1);
+    });
     $('#menuBtn').addEventListener('click', () => document.body.classList.toggle('toc-open'));
     $('.scrim').addEventListener('click', () => document.body.classList.remove('toc-open'));
-    $('#themeBtn').addEventListener('click', () => Theme.set(Theme.current() === 'dark' ? 'light' : 'dark'));
     $('#modeBtn').addEventListener('click', () => this.setPage(!this.page));
-    $$('[data-goto]').forEach(b => b.addEventListener('click', () => this.goId(b.dataset.goto)));
     document.addEventListener('keydown', e => {
       const t = e.target;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
@@ -538,14 +588,12 @@ const Deck = {
     let rt;
     window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => this.redrawVisible(), 120); });
     window.addEventListener('themechange', () => this.redrawVisible());
-    try { if (localStorage.getItem('dl8-page') === '1') this.setPage(true, true); } catch (e) { /* ignore */ }
+    try { if (localStorage.getItem('dlx-page') === '1') this.setPage(true, true); } catch (e) { /* ignore */ }
     this.fromHash(true);
-    this.updateThemeIcon();
-    window.addEventListener('themechange', () => this.updateThemeIcon());
   },
   updateThemeIcon() {
-    const dark = Theme.current() === 'dark';
-    $('#themeBtn .txt').textContent = dark ? 'Light' : 'Dark';
+    const t = $('#themeBtn .txt');
+    if (t) t.textContent = Theme.current() === 'dark' ? 'Light' : 'Dark';
   },
   fromHash(first) {
     const id = decodeURIComponent((location.hash || '').replace(/^#\/?/, ''));
@@ -563,41 +611,40 @@ const Deck = {
     i = clamp(i, 0, this.slides.length - 1);
     this.i = i;
     const s = this.slides[i];
-    if (this.page) {
-      s.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    } else {
-      this.slides.forEach((x, k) => x.classList.toggle('active', k === i));
-      window.scrollTo({ top: 0 });
-    }
+    if (this.page) s.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    else { this.slides.forEach((x, k) => x.classList.toggle('active', k === i)); window.scrollTo({ top: 0 }); }
     this.slides.forEach(x => x._toc.classList.toggle('active', x === s));
     s._toc.scrollIntoView({ block: 'nearest' });
     $('#where').innerHTML = `<b>${i + 1}</b> / ${this.slides.length} · ${s.dataset.title}`;
-    $('#prevBtn').disabled = i === 0;
-    $('#nextBtn').disabled = i === this.slides.length - 1;
+    const first = i === 0, last = i === this.slides.length - 1;
+    $('#prevBtn').disabled = first && !Course.prev();
+    $('#nextBtn').disabled = last && !Course.next();
+    $('#prevBtn .txt').textContent = first && Course.prev() ? 'Previous lecture' : 'Previous';
+    $('#nextBtn .txt').textContent = last && Course.next() ? 'Next lecture' : 'Next';
     $('.progress').style.width = ((i + 1) / this.slides.length * 100) + '%';
     if (push && ('#/' + s.id) !== location.hash) history.replaceState(null, '', '#/' + s.id);
-    document.title = s.dataset.title + ' · Optimization for Training';
+    const lec = Course.current();
+    document.title = s.dataset.title + ' · ' + (lec ? `L${lec.n} ${lec.title}` : 'Deep Learning');
     initWidgetsIn(s); // the slide is visible now, so widgets can measure their size
   },
   setPage(on, silent) {
     this.page = on;
     document.body.classList.toggle('page-mode', on);
     $('#modeBtn .txt').textContent = on ? 'Slides' : 'One page';
-    try { localStorage.setItem('dl8-page', on ? '1' : '0'); } catch (e) { /* ignore */ }
+    try { localStorage.setItem('dlx-page', on ? '1' : '0'); } catch (e) { /* ignore */ }
     if (on) {
       this.slides.forEach(s => s.classList.add('active'));
       if (!this.io) {
         this.io = new IntersectionObserver(entries => {
           entries.forEach(en => {
-            if (en.isIntersecting) {
-              initWidgetsIn(en.target);
-              if (this.page) {
-                const k = this.slides.indexOf(en.target);
-                if (k >= 0 && en.intersectionRatio > 0) {
-                  this.i = k;
-                  this.slides.forEach(x => x._toc.classList.toggle('active', x === en.target));
-                  $('.progress').style.width = ((k + 1) / this.slides.length * 100) + '%';
-                }
+            if (!en.isIntersecting) return;
+            initWidgetsIn(en.target);
+            if (this.page) {
+              const k = this.slides.indexOf(en.target);
+              if (k >= 0) {
+                this.i = k;
+                this.slides.forEach(x => x._toc.classList.toggle('active', x === en.target));
+                $('.progress').style.width = ((k + 1) / this.slides.length * 100) + '%';
               }
             }
           });
@@ -616,45 +663,116 @@ const Deck = {
   }
 };
 
-/* ---------- overview widget: the training loop ---------- */
-Widgets.loop = (el) => {
-  UI.head(el, 'The training loop — click any step', 'Each step lists the ideas from this lecture that plug into it.');
+/* ---------- the training loop map (per lecture, or whole course on the hub) ---------- */
+Widgets.loop = (el, ds) => {
+  const topics = window.TOPICS || {};
+  const course = ds.scope === 'course';
+  UI.head(el, 'The training loop — click any step',
+    course ? 'Every lecture improves one or more of these steps. Pick a step to see which lectures and ideas plug into it.'
+      : 'Highlighted steps are the ones this lecture changes. Pick a step to see which ideas from this lecture live there.');
   const flow = h('div', { class: 'loop' });
   const detail = h('div', { class: 'loop-detail' });
   const cards = STAGES.map((st, k) => {
-    const b = h('button', { type: 'button', class: 'loop-step' },
+    const n = (topics[st.id] || []).length;
+    const b = h('button', { type: 'button', class: 'loop-step' + (n ? ' has' : '') },
       h('span', { class: 'num' }, 'STEP ' + (k + 1)),
       h('span', { class: 'nm' }, st.name),
-      h('span', { class: 'cnt' }, st.topics.length + ' lecture topic' + (st.topics.length > 1 ? 's' : '')));
+      h('span', { class: 'cnt' }, n ? `${n} topic${n > 1 ? 's' : ''} here` : 'not in this lecture'));
     b.addEventListener('click', () => select(st.id));
     flow.append(b);
     return b;
   });
-  el.append(flow, h('div', { class: 'loop-back' }, '↺ after step 6, go back to step 2 with a new minibatch — thousands of times'), detail);
+  el.append(flow, h('div', { class: 'loop-back' }, '↺ steps 3 → 7 repeat thousands of times (one round per minibatch); step 8 checks progress along the way'), detail);
   function select(id) {
     const k = STAGES.findIndex(s => s.id === id);
     if (k < 0) return;
     const st = STAGES[k];
     cards.forEach((c, j) => c.classList.toggle('on', j === k));
     detail.innerHTML = '';
+    const list = topics[st.id] || [];
     const btns = h('div', { class: 'topic-btns' });
-    st.topics.forEach(([sid, name]) => {
+    list.forEach(([link, name]) => {
       const b = h('button', { type: 'button', class: 'topic-btn' }, name + ' →');
-      b.addEventListener('click', () => Deck.goId(sid));
+      b.addEventListener('click', () => goLink(link));
       btns.append(b);
     });
-    detail.append(
-      h('div', { class: 'card' }, h('h3', {}, h('span', { class: 'dot' }), 'Step ' + (k + 1) + ' · ' + st.name), h('p', {}, st.what),
-        h('div', { class: 'note', style: 'margin:8px 0 6px' }, 'Lecture topics that live here:'), btns)
-    );
+    detail.append(h('div', { class: 'card' },
+      h('h3', {}, h('span', { class: 'dot' }), 'Step ' + (k + 1) + ' · ' + st.name),
+      h('p', {}, st.what),
+      list.length ? h('div', { class: 'note', style: 'margin:8px 0 6px' }, course ? 'Where the course covers this step:' : 'Ideas from this lecture that live here:')
+        : h('div', { class: 'note' }, 'This lecture does not change this step — the course home shows which lectures do.'),
+      btns));
   }
-  select('update');
+  const firstWith = STAGES.find(s => (topics[s.id] || []).length);
+  select(ds.start || (firstWith ? firstWith.id : 'update'));
   return { select };
 };
 
 /* ---------- boot ---------- */
 Theme.init();
 document.addEventListener('DOMContentLoaded', () => {
+  buildChrome();
   renderMath(document.body);
   Deck.init();
 });
+
+/* ---------- small numeric helpers shared by the lectures ---------- */
+/* Solve A x = b (Gaussian elimination with partial pivoting). A: n×n array of arrays. */
+function solveLinear(A, b) {
+  const n = b.length;
+  const M = A.map((r, i) => [...r, b[i]]);
+  for (let c = 0; c < n; c++) {
+    let p = c;
+    for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r;
+    [M[c], M[p]] = [M[p], M[c]];
+    const piv = M[c][c];
+    if (Math.abs(piv) < 1e-300) continue;
+    for (let r = 0; r < n; r++) {
+      if (r === c) continue;
+      const f = M[r][c] / piv;
+      if (f) for (let k = c; k <= n; k++) M[r][k] -= f * M[c][k];
+    }
+  }
+  return M.map((r, i) => r[n] / (Math.abs(r[i]) > 1e-300 ? r[i] : 1e-300));
+}
+/* Least squares with optional weight decay: minimize (1/m)·Σ(x·w − y)² + λ·Σ_{j≥1} w_j² (the first weight = bias is not penalized). */
+function ridgeFit(X, y, lambda = 0) {
+  const d = X[0].length, m = X.length;
+  const A = Array.from({ length: d }, () => new Array(d).fill(0));
+  const b = new Array(d).fill(0);
+  X.forEach((row, i) => {
+    for (let p = 0; p < d; p++) {
+      b[p] += row[p] * y[i] / m;
+      for (let q = 0; q < d; q++) A[p][q] += row[p] * row[q] / m;
+    }
+  });
+  for (let p = 0; p < d; p++) A[p][p] += (p > 0 ? lambda : 0) + 1e-12;
+  return solveLinear(A, b);
+}
+/* polynomial features of x ∈ [0,1], computed on t = 2x − 1 for numerical stability */
+function polyRow(x, deg) { const t = 2 * x - 1; const r = [1]; for (let k = 1; k <= deg; k++) r.push(r[k - 1] * t); return r; }
+function dotv(a, b) { let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * b[i]; return s; }
+function mean(a) { return a.reduce((s, v) => s + v, 0) / a.length; }
+function mse(pred, y) { let s = 0; for (let i = 0; i < y.length; i++) s += (pred[i] - y[i]) ** 2; return s / y.length; }
+function sigmoid(z) { return 1 / (1 + Math.exp(-z)); }
+
+/* ---------- polynomial-regression toy problem (used by several lectures) ---------- */
+function TRUE_F(x) { return Math.sin(2 * Math.PI * x); }
+function makeData(n, noise, seed) {
+  const rng = mulberry32(seed);
+  return Array.from({ length: n }, () => { const x = rng(); return [x, TRUE_F(x) + noise * gaussian(rng)]; });
+}
+function fitPoly(data, deg, lambda = 0) { return ridgeFit(data.map(([x]) => polyRow(x, deg)), data.map(d => d[1]), lambda); }
+function evalPoly(wv, x) { return dotv(wv, polyRow(x, wv.length - 1)); }
+function polyMSE(wv, data) { return mean(data.map(([x, y]) => (evalPoly(wv, x) - y) ** 2)); }
+/* log-gamma (Lanczos) — for Beta / Gaussian densities */
+function lgamma(z) {
+  const g = 7, c = [0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059, 12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
+  if (z < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * z)) - lgamma(1 - z);
+  z -= 1; let x = c[0];
+  for (let i = 1; i < g + 2; i++) x += c[i] / (z + i);
+  const t = z + g + 0.5;
+  return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(x);
+}
+function betaPdf(t, a, b) { if (t <= 0 || t >= 1) return 0; return Math.exp((a - 1) * Math.log(t) + (b - 1) * Math.log(1 - t) - (lgamma(a) + lgamma(b) - lgamma(a + b))); }
+function normPdf(x, mu, sd) { return Math.exp(-0.5 * ((x - mu) / sd) ** 2) / (sd * Math.sqrt(2 * Math.PI)); }
