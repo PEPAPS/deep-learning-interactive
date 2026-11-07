@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deep Feedforward Networks</title>
+<meta name="description" content="Interactive notes for Deep Learning chapter 6.1–6.4: feedforward networks, learning XOR, gradient-based learning, cost functions, output units (linear, sigmoid, softmax), hidden units (ReLU, maxout, sigmoid, tanh), architecture, universal approximation and depth.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232a78d6'/%3E%3Cpath d='M6 9c5 0 6 14 10 14s5-14 10-14' fill='none' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<link rel="stylesheet" href="../css/style.css?v=10">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script defer src="../js/core.js?v=10"></script>
+<script defer src="../js/course.js?v=10"></script>
+<script defer src="../js/quiz.js?v=10"></script>
+<script defer src="../js/lectures/ch06-1.js?v=10"></script>
+</head>
+<body data-page="lecture" data-lecture="ch06-1">
+<script>
+window.TOPICS = {
+  data: [['s-linear-limits', 'Representation: features φ(x)']],
+  init: [['s-gbl', 'Small random weights, small positive biases'], ['s-arch', 'Choosing depth & width'], ['s-uat', 'Universal approximation & depth'], ['s-arch-other', 'Skip connections & sparse connectivity']],
+  forward: [['s-ffn', 'Layers, units, composition'], ['s-xor', 'Hidden layer builds features'], ['s-hidden', 'ReLU & generalizations'], ['s-sigmoid-tanh', 'Sigmoid & tanh'], ['s-other-hidden', 'Other hidden units'], ['s-output-linear', 'Linear output'], ['s-output-sigmoid', 'Sigmoid output'], ['s-softmax', 'Softmax output']],
+  loss: [['s-cost-mle', 'Cross-entropy from maximum likelihood'], ['s-output-sigmoid', 'Binary cross-entropy (softplus)'], ['s-softmax', 'Softmax cross-entropy']],
+  backward: [['s-output-sigmoid', 'Why the log keeps gradients alive'], ['s-hidden', 'ReLU slope = 1 when active']],
+  update: [['s-gbl', 'Non-convex, gradient-based training']]
+};
+</script>
+
+<main class="deck" id="deck">
+
+<section class="slide" id="s-title" data-part="Start here" data-title="Welcome: neural networks">
+  <div class="slide-head">
+    <span class="kicker">Lecture 4 · Chapter 6.1 – 6.4</span>
+    <h1>Deep Feedforward Networks</h1>
+    <p class="lede">Finally the model itself. A <b>feedforward network</b> (multilayer perceptron, MLP) is a chain of simple functions — layers — that together approximate a target function. We will see why it needs <b>non-linear hidden units</b> (XOR), how <b>maximum likelihood</b> picks the loss and <b>output unit</b>, which <b>hidden units</b> to use, and why <b>depth</b> helps.</p>
+  </div>
+  <div class="road">
+    <div class="card big"><span class="kicker">Part 1 · 6.1 – 6.2</span><h4>What a network is &amp; how it learns</h4><ol><li>Layers, units, depth, width</li><li>Learning the features φ</li><li>Example: XOR</li><li>Gradient-based learning, cost functions</li></ol><button class="btn primary go" type="button" data-goto="s-ffn">Start →</button></div>
+    <div class="card big"><span class="kicker">Part 2 · 6.2.2 – 6.4</span><h4>Units &amp; architecture</h4><ol><li>Output units: linear, sigmoid, softmax</li><li>Hidden units: ReLU, maxout, tanh…</li><li>Depth, width, universal approximation</li><li>Skip connections &amp; connectivity</li></ol><button class="btn primary go" type="button" data-goto="s-output-linear">Jump to Part 2 →</button></div>
+  </div>
+</section>
+
+<section class="slide" id="s-loop" data-part="Start here" data-title="Where this lecture fits" data-stages="init,forward,loss">
+  <div class="slide-head"><span class="kicker">Start here</span><h2>Where this lecture fits in training</h2><div class="stages"></div></div>
+  <p class="bigidea">This lecture defines the <b>model</b> (step 2: architecture and init) and the <b>forward pass</b> (step 4), and fixes which <b>loss</b> (step 5) goes with which output.</p>
+  <div class="stack"><div data-widget="loop"></div>
+    <div class="row3">
+      <div class="card plain"><h3><span class="dot"></span>Forward pass</h3><p>Each layer computes \(\mathbf h=g(\mathbf W^\top\mathbf x+\mathbf b)\): an affine map followed by a fixed non-linearity.</p></div>
+      <div class="card plain"><h3><span class="dot"></span>Output + loss</h3><p>Pick the output distribution (Gaussian / Bernoulli / multinoulli) → output unit (linear / sigmoid / softmax) → loss (negative log-likelihood).</p></div>
+      <div class="card plain"><h3><span class="dot"></span>Why it matters for optimization</h3><p>The non-linearity makes the loss <b>non-convex</b>, so we need gradient descent (L3), back-propagation (L5), and careful initialization (L8).</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-ffn" data-part="Part 1 · Networks & learning (6.1–6.2)" data-title="Layers, units, depth" data-stages="forward">
+  <div class="slide-head"><span class="kicker">6 · Deep feedforward networks</span><h2>What is a feedforward network?</h2><div class="stages"></div></div>
+  <p class="bigidea">A network \(f(\mathbf x;\boldsymbol\theta)\) is a <b>composition of layers</b>: \(f=f^{(3)}\circ f^{(2)}\circ f^{(1)}\). Information flows <b>forward</b> from x to y; there are no feedback loops. Training adjusts θ so that f ≈ the target function f*.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mathbf y=f(\mathbf x;\boldsymbol\theta)\approx f^*(\mathbf x),\qquad f(\mathbf x)=f^{(3)}\Big(f^{(2)}\big(f^{(1)}(\mathbf x)\big)\Big) \]</div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li><b>Feedforward</b>: x → intermediate computations → y, no feedback connections. (With feedback they become recurrent networks, Lecture 11.)</li>
+          <li><b>Network</b>: many functions composed; the model is a <b>directed acyclic graph</b>. \(f^{(1)}\) is the first layer, \(f^{(2)}\) the second … the last is the <b>output layer</b>. The chain length is the <b>depth</b> — hence “deep learning”.</li>
+          <li>Training data give noisy examples of f*(x) with labels y ≈ f*(x). They say what the <b>output</b> must be, but not what the other layers should do — those are <b>hidden layers</b>.</li>
+          <li><b>Neural</b>: loosely inspired by neuroscience. Each hidden layer is a vector; its dimension is the <b>width</b>; each element is a <b>unit</b> (like a neuron) that takes many inputs and computes its own <b>activation</b>. But the goal is <b>function approximation for generalization</b>, not modelling the brain.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>MLP</dt><dd>Multilayer perceptron = feedforward neural network.</dd>
+        <dt>Layer \(f^{(i)}\)</dt><dd>One function in the chain (e.g. \(\mathbf h=g(\mathbf W^\top\mathbf x+\mathbf b)\)).</dd>
+        <dt>Depth / width</dt><dd>Number of layers / number of units in a layer.</dd>
+        <dt>Unit / activation</dt><dd>One element of a layer and the value it outputs.</dd>
+        <dt>Hidden layer</dt><dd>A layer whose desired output is not given by the data.</dd>
+        <dt>θ (parameters)</dt><dd>All weights W and biases b.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>One hidden unit with weights w = (0.5, −1), bias b = 0.2, input x = (1, 2).</li>
+        <li>Pre-activation \(z=0.5\cdot1+(-1)\cdot2+0.2=-1.3\). ReLU: \(h=\max\{0,-1.3\}=0\).</li>
+        <li>Parameter count for 2 → 3 → 1: layer 1 has \(2\times3\) weights + 3 biases = 9; layer 2 has \(3\times1+1=4\); total 13.</li>
+      </ol></div>
+    </div>
+    <div data-widget="mlpDiagram"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch05-1.html#/s-linreg">Linear regression (L1)</a>: a network with no hidden layer and a linear output is linear regression.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch06-5.html#/s-graph">Computational graphs (L5)</a>: the DAG that back-propagation walks backwards.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-linear-limits" data-part="Part 1 · Networks & learning (6.1–6.2)" data-title="Why learn the features φ" data-stages="data,forward">
+  <div class="slide-head"><span class="kicker">6 · From linear models to networks</span><h2>Linear models are limited — so learn the features</h2><div class="stages"></div></div>
+  <p class="bigidea">A linear model can’t capture <b>interactions</b> between inputs. Apply it to <b>features φ(x)</b> instead. Deep learning’s strategy: <b>learn φ</b> from data with a hidden layer: \(y=\boldsymbol\phi(\mathbf x;\boldsymbol\theta)^\top\mathbf w\).</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <p>Linear and logistic regression are attractive: they fit efficiently and reliably (closed form or convex optimization). But they can only represent linear functions. Fix: use a non-linear transformation φ(x) — a new <b>representation</b> of x. How to choose φ?</p>
+        <ol class="steps">
+          <li><b>Generic φ</b> (e.g. the infinite-dimensional one implicit in an RBF-kernel machine): enough capacity to fit the training set, but based only on local smoothness → often generalizes poorly on hard tasks.</li>
+          <li><b>Hand-engineer φ</b>: dominant before deep learning; decades of expert work per domain (speech, vision) with little transfer.</li>
+          <li><b>Learn φ</b>: \(y=f(\mathbf x;\boldsymbol\theta,\mathbf w)=\boldsymbol\phi(\mathbf x;\boldsymbol\theta)^\top\mathbf w\). Gives up convexity, but can be as generic as (1) and lets humans encode knowledge by choosing the <em>family</em> φ(x; θ), not the exact function — like (2).</li>
+        </ol>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Feature map φ</dt><dd>A function that turns raw input x into new features.</dd>
+        <dt>Representation</dt><dd>How the input is described to the next stage.</dd>
+        <dt>Kernel trick</dt><dd>Use a very high-dimensional φ implicitly, through similarity computations.</dd>
+        <dt>Convex</dt><dd>Bowl-shaped loss: any local minimum is global. Neural nets lose this.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Point x = (0.3, 0.4). Hand-made features \(\boldsymbol\phi=(x_1^2,x_2^2)=(0.09,0.16)\).</li>
+        <li>Linear model in feature space: w = (1, 1), b = −0.5: \(0.09+0.16-0.5=-0.25&lt;0\) → “inner disk”.</li>
+        <li>Point (1, 0.2): φ = (1, 0.04) → \(1.04-0.5=0.54&gt;0\) → “ring”. The boundary \(x_1^2+x_2^2=0.5\) is a circle in x-space, but a <em>line</em> in φ-space.</li>
+      </ol></div>
+    </div>
+    <div data-widget="phiFeatures"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch05-4.html#/s-smoothness">Smoothness prior is not enough (L2)</a>: why generic, local φ fail on AI tasks.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch09.html#/s-conv-op">Convolutional features (L10)</a>: learned φ specialized for images.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-xor" data-part="Part 1 · Networks & learning (6.1–6.2)" data-title="Example: learning XOR" data-stages="forward">
+  <div class="slide-head"><span class="kicker">6.1 · Example: learning XOR</span><h2>XOR: the smallest problem that needs a hidden layer</h2><div class="stages"></div></div>
+  <p class="bigidea">No line separates XOR. One hidden layer with <b>ReLU</b> maps the 4 points into a new space where a line <b>does</b> — the network learns a better representation.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ J(\boldsymbol\theta)=\frac14\sum_{\mathbf x\in\mathbb X}\big(f^*(\mathbf x)-f(\mathbf x;\boldsymbol\theta)\big)^2 \]<span class="eqno">(6.1) MSE on the 4 points</span>
+        \[ f(\mathbf x;\mathbf w,b)=\mathbf x^{\top}\mathbf w+b\ \Rightarrow\ \mathbf w=\mathbf 0,\ b=\tfrac12 \]<span class="eqno">(6.2) best linear model: 0.5 everywhere</span>
+        \[ f(\mathbf x;\mathbf W,\mathbf c,\mathbf w,b)=\mathbf w^{\top}\max\{0,\mathbf W^{\top}\mathbf x+\mathbf c\}+b \]<span class="eqno">(6.3)</span>
+        \[ \mathbf W=\begin{bmatrix}1&1\\1&1\end{bmatrix},\ \mathbf c=\begin{bmatrix}0\\-1\end{bmatrix},\ \mathbf w=\begin{bmatrix}1\\-2\end{bmatrix},\ b=0 \]<span class="eqno">(6.4–6.6)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>XOR(x₁, x₂) = 1 when exactly one input is 1. Here we only care about fitting the 4 points (no generalization), using MSE to keep the math simple (MSE is usually <b>not</b> right for binary data).</li>
+          <li>If \(f^{(1)}\) were linear, the whole network \(\mathbf x^\top\mathbf W\mathbf w\) would be linear. So use an <b>affine transformation followed by a fixed non-linear activation</b>: \(\mathbf h=g(\mathbf W^\top\mathbf x+\mathbf c)\), with ReLU \(g(z)=\max\{0,z\}\) — the modern default.</li>
+          <li>After \(\mathbf X\mathbf W+\mathbf c\) all points lie on a line where the output must go 0 → 1 → 0 (impossible for a linear model). ReLU bends that line, and the points become linearly separable.</li>
+          <li>We just <em>wrote down</em> the solution. In practice gradient descent finds one (often a messier, equivalent one) — and the result depends on the initial weights.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>XOR</dt><dd>“Exclusive or”: 1 if exactly one input is 1.</dd>
+        <dt>Activation function g</dt><dd>Fixed non-linear function applied element-wise.</dd>
+        <dt>ReLU</dt><dd>Rectified linear unit \(\max\{0,z\}\).</dd>
+        <dt>Linearly separable</dt><dd>A straight line (hyperplane) can split the classes.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step (all 4 points)</h3><ol class="calc">
+        <li>\(\mathbf X=\begin{bmatrix}0&0\\0&1\\1&0\\1&1\end{bmatrix}\Rightarrow\mathbf X\mathbf W=\begin{bmatrix}0&0\\1&1\\1&1\\2&2\end{bmatrix}\).</li>
+        <li>Add c = (0, −1): \(\begin{bmatrix}0&-1\\1&0\\1&0\\2&1\end{bmatrix}\).</li>
+        <li>ReLU: \(\begin{bmatrix}0&0\\1&0\\1&0\\2&1\end{bmatrix}\) — the two “1” examples now coincide at (1, 0).</li>
+        <li>Multiply by w = (1, −2): \((0,\ 1,\ 1,\ 2-2)=(0,1,1,0)\) ✓ — zero error.</li>
+      </ol></div>
+    </div>
+    <div data-widget="xorNet"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch05-1.html#/s-capacity-curve">VC dimension (L1)</a>: XOR is the 4-point labeling a line can’t shatter.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch06-5.html#/s-example">Back-propagation for an MLP (L5)</a>: how gradient descent actually finds W, c, w, b.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-gbl" data-part="Part 1 · Networks & learning (6.1–6.2)" data-title="Gradient-based learning" data-stages="init,update">
+  <div class="slide-head"><span class="kicker">6.2 · Gradient-based learning</span><h2>Training a network: non-convex, iterative, init-sensitive</h2><div class="stages"></div></div>
+  <p class="bigidea">Non-linearity makes the loss <b>non-convex</b>: no normal equations, no global guarantees. We use iterative gradient methods that drive the cost “very low”, and the result <b>depends on the initial weights</b>.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Linear regression: solve linear equations. Logistic regression / SVMs: convex optimization with global convergence guarantees. Neural nets: <b>SGD on a non-convex loss</b>.</li>
+          <li>SGD on non-convex losses is <b>sensitive to the initial parameters</b>. Initialize weights to <b>small random values</b> (randomness breaks symmetry between units); biases to zero or <b>small positive</b> values.</li>
+          <li>Linear models are also trained with gradient descent when data is huge — so training a network isn’t that different; the gradient is just a bit more complicated (back-propagation, next lecture).</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Non-convex</dt><dd>The loss surface has many valleys, plateaus and saddles.</dd>
+        <dt>Initialization</dt><dd>The starting values of all weights before training.</dd>
+        <dt>Symmetry breaking</dt><dd>Random init makes units start different, so they learn different features.</dd>
+        <dt>Dead ReLU</dt><dd>A unit whose input is negative for every example: output 0, gradient 0 — it can’t recover.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>If all weights start at 0, every hidden unit computes the same value and gets the same gradient → they stay identical forever (symmetry). Random init avoids this.</li>
+        <li>ReLU unit with bias 0.1 and small weights: for input x ≈ 0, \(z\approx0.1&gt;0\) → active, gradient 1 flows.</li>
+        <li>With bias −0.5 and small weights: \(z\approx-0.5&lt;0\) → output 0, gradient 0 → a dead unit from the start.</li>
+      </ol></div>
+    </div>
+    <div data-widget="xorInits"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch04-3.html#/s-sgd">SGD (L3)</a> and <a href="ch04-3.html#/s-critical">critical points (L3)</a>.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch08-3.html#/s-init">Initialization strategies (L8)</a> and <a href="ch08-1.html#/s-local-minima">local minima in practice (L7)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-cost-mle" data-part="Part 1 · Networks & learning (6.1–6.2)" data-title="Cost functions: max likelihood" data-stages="loss">
+  <div class="slide-head"><span class="kicker">6.2.1 · Cost functions</span><h2>The cost function: negative log-likelihood</h2><div class="stages"></div></div>
+  <p class="bigidea">Most networks define \(p_{\text{model}}(\mathbf y\mid\mathbf x)\) and minimize the <b>negative log-likelihood</b> (cross-entropy). The output distribution decides the exact formula; the log keeps gradients <b>large and predictable</b>.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ J(\boldsymbol\theta)=-\mathbb E_{\mathbf x,\mathbf y\sim\hat p_{\text{data}}}\log p_{\text{model}}(\mathbf y\mid\mathbf x) \]<span class="eqno">(6.12)</span>
+        \[ p_{\text{model}}(\mathbf y\mid\mathbf x)=\mathcal N\big(\mathbf y;f(\mathbf x;\boldsymbol\theta),\mathbf I\big)\ \Rightarrow\ J(\boldsymbol\theta)=\tfrac12\mathbb E\,\|\mathbf y-f(\mathbf x;\boldsymbol\theta)\|^2+\text{const} \]<span class="eqno">(6.13)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Cost functions for networks are the same as for other parametric models. Usually: the <b>cross-entropy</b> between training data and the model’s predictions.</li>
+          <li>Sometimes simpler: predict only a <b>statistic</b> of y (e.g. its mean) with a specialized loss.</li>
+          <li>Total cost = primary cost + <b>regularization</b> (e.g. weight decay, as for linear models).</li>
+          <li>Gaussian output → MSE (up to a factor ½ and a constant) — for <b>any</b> network f, not just linear ones.</li>
+          <li>Why NLL is good: <b>saturating</b> functions (very flat) give tiny gradients. Many output units contain an exp that saturates when its argument is very negative; the <b>log undoes the exp</b>.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Cross-entropy</dt><dd>\(-\mathbb E\log p_{\text{model}}\): the NLL averaged over the data.</dd>
+        <dt>Saturate</dt><dd>Become flat, so the derivative is ≈ 0.</dd>
+        <dt>Statistic of y</dt><dd>A summary such as the mean or median, instead of a whole distribution.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Gaussian with σ = 1, target y = 2, prediction f(x) = 1.5.</li>
+        <li>\(-\log\mathcal N(2;1.5,1)=\frac12(2-1.5)^2+\frac12\log(2\pi)=0.125+0.919=1.044\).</li>
+        <li>The 0.919 never depends on θ, so minimizing the NLL = minimizing \(\frac12(y-f)^2\) (the MSE).</li>
+      </ol></div>
+    </div>
+    <div data-widget="outputPicker" data-kind="real"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch05-4.html#/s-mle">Maximum likelihood & cross-entropy (L2)</a> and <a href="ch05-4.html#/s-cond-ll">MSE = Gaussian NLL (L2)</a>.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch07.html#/s-norm-penalty">Regularization terms added to the cost (L6)</a>.</span></li>
+  </ul></div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-output-linear" data-part="Part 2 · Units & architecture (6.2.2–6.4)" data-title="Linear output units" data-stages="forward,loss">
+  <div class="slide-head"><span class="kicker">6.2.2 · Output units</span><h2>Output units, and the linear unit for real values</h2><div class="stages"></div></div>
+  <p class="bigidea">The <b>output unit</b> turns the last hidden features h into the parameters of p(y|x). For real-valued y: a <b>linear</b> unit gives the mean of a Gaussian → MSE loss, and it <b>never saturates</b>.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \hat{\mathbf y}=\mathbf W^{\top}\mathbf h+\mathbf b,\qquad p(\mathbf y\mid\mathbf x)=\mathcal N(\mathbf y;\hat{\mathbf y},\mathbf I) \]<span class="eqno">(6.17)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>The choice of cost is tightly coupled to the choice of output unit: cross-entropy + the output’s representation = the exact loss formula.</li>
+          <li>Any output unit can also be used as a hidden unit.</li>
+          <li><b>Linear units</b>: affine transformation with no non-linearity. They output the <b>mean of a conditional Gaussian</b>; maximizing log-likelihood = minimizing MSE.</li>
+          <li>Linear units don’t saturate, so they pose little difficulty for gradient-based optimization.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Output unit</dt><dd>The final layer that produces the prediction / distribution parameters.</dd>
+        <dt>h</dt><dd>The features computed by the last hidden layer.</dd>
+        <dt>Conditional Gaussian</dt><dd>A bell curve over y whose centre depends on x.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>h = (1, 0.5), W = (2, −1), b = 0.3 → \(\hat y=2\cdot1-1\cdot0.5+0.3=1.8\).</li>
+        <li>Target y = 2: loss \(\frac12(2-1.8)^2=0.02\); gradient \(\partial L/\partial\hat y=\hat y-y=-0.2\) → push \(\hat y\) up.</li>
+      </ol></div>
+    </div>
+    <div data-widget="outputPicker" data-kind="real"></div>
+  </div>
+</section>
+
+<section class="slide" id="s-output-sigmoid" data-part="Part 2 · Units & architecture (6.2.2–6.4)" data-title="Sigmoid output units" data-stages="forward,loss,backward">
+  <div class="slide-head"><span class="kicker">6.2.2.2 · Sigmoid units for Bernoulli outputs</span><h2>Yes/no outputs: sigmoid + log-likelihood</h2><div class="stages"></div></div>
+  <p class="bigidea">Predict \(P(y=1\mid\mathbf x)=\sigma(z)\). With the log-likelihood the loss is <b>softplus((1 − 2y)z)</b>: it only saturates when the answer is already <b>right</b>, so wrong answers always get a strong gradient. MSE does not have this property.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ P(y=1\mid\mathbf x)=\max\{0,\min\{1,\mathbf w^{\top}\mathbf h+b\}\}\quad\text{(bad: gradient 0 outside [0,1])} \]<span class="eqno">(6.18)</span>
+        \[ \hat y=\sigma(\mathbf w^{\top}\mathbf h+b),\qquad\sigma(x)=\frac{1}{1+\exp(-x)} \]<span class="eqno">(6.19)</span>
+        \[ \log\tilde P(y)=yz,\ \ \tilde P(y)=\exp(yz),\ \ P(y)=\frac{\exp(yz)}{\sum_{y'=0}^{1}\exp(y'z)}=\sigma\big((2y-1)z\big) \]<span class="eqno">(6.20–6.23)</span>
+        \[ J(\boldsymbol\theta)=-\log\sigma\big((2y-1)z\big)=\zeta\big((1-2y)z\big),\qquad\zeta(x)=\log(1+\exp(x)) \]<span class="eqno">(6.24–6.26)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Binary targets → a <b>Bernoulli</b> distribution, defined by one number in [0, 1].</li>
+          <li>Clipping a linear unit to [0, 1] is a valid probability, but outside that range the gradient is 0 → no learning signal.</li>
+          <li>The sigmoid unit = linear layer computing the <b>logit</b> z, then σ(z). σ saturates for very positive/negative z.</li>
+          <li><b>Softplus</b> ζ is a smooth version of \(\max(0,x)\); range (0, ∞).</li>
+          <li>ζ((1 − 2y)z) saturates only when (1 − 2y)z is very negative, i.e. y = 1 and z ≫ 0, or y = 0 and z ≪ 0 — the model is right. When wrong, ζ(x) ≈ |z| and its slope → ±1: <b>full-strength correction</b>.</li>
+          <li>With MSE the loss saturates whenever σ(z) saturates — right <em>or wrong</em>. So maximum likelihood is almost always preferred for sigmoid outputs.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Bernoulli</dt><dd>Distribution over {0, 1} with P(1) = ŷ.</dd>
+        <dt>Logit z</dt><dd>Unnormalized log-probability; z = wᵀh + b.</dd>
+        <dt>\(\tilde P\)</dt><dd>Unnormalized probability (before dividing by the sum).</dd>
+        <dt>Softplus ζ(x)</dt><dd>log(1 + eˣ) — “softened” max(0, x).</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>True y = 1, but the network says z = −3: \(\sigma(-3)=0.047\) — confidently wrong.</li>
+        <li>NLL \(=\zeta(3)=\log(1+e^3)=3.049\); gradient \(\partial J/\partial z=\sigma(z)-y=-0.953\): strong push up.</li>
+        <li>MSE \((\sigma-1)^2=0.907\); gradient \(2(\sigma-1)\sigma(1-\sigma)=2(-0.953)(0.047)(0.953)=-0.086\): 11× weaker.</li>
+      </ol></div>
+    </div>
+    <div data-widget="nllShapes"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch05-4.html#/s-prob-sl">Logistic regression (L2)</a>: a sigmoid output on raw features.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch10.html#/s-lstm">LSTM gates (L11)</a>: sigmoids used as soft on/off switches.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-softmax" data-part="Part 2 · Units & architecture (6.2.2–6.4)" data-title="Softmax output units" data-stages="forward,loss">
+  <div class="slide-head"><span class="kicker">6.2.2.3 · Softmax units for multinoulli outputs</span><h2>Many classes: softmax</h2><div class="stages"></div></div>
+  <p class="bigidea">A linear layer outputs <b>logits</b> z; softmax exponentiates and normalizes them into probabilities that sum to 1. The log-likelihood \(z_y-\log\sum_j e^{z_j}\) has a term that <b>never saturates</b>; the gradient is simply <b>p − onehot(y)</b>.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mathbf z=\mathbf W^{\top}\mathbf h+\mathbf b,\quad z_i=\log\tilde P(y=i\mid\mathbf x),\qquad\text{softmax}(\mathbf z)_i=\frac{\exp(z_i)}{\sum_j\exp(z_j)} \]<span class="eqno">(6.28–6.29)</span>
+        \[ \log\text{softmax}(\mathbf z)_i=z_i-\log\sum_j\exp(z_j)\approx z_i-\max_j z_j \]<span class="eqno">(6.30)</span>
+        \[ \text{softmax}(\mathbf z)=\text{softmax}(\mathbf z+c)=\text{softmax}\big(\mathbf z-\max_i z_i\big) \]<span class="eqno">(6.32–6.33) invariance & stable form</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>For n classes we need a vector ŷ with every \(\hat y_i\in[0,1]\) and \(\sum\hat y_i=1\).</li>
+          <li>Maximizing log softmax: the first term \(z_y\) pushes the correct logit <b>up</b> (can’t saturate); the second pushes <b>all</b> logits down. If the correct class already has the largest logit, the two terms roughly cancel → that example contributes little; training focuses on misclassified examples.</li>
+          <li>Losses without a log (e.g. squared error) fail with softmax: when it saturates, the gradient vanishes even for confident <b>wrong</b> answers.</li>
+          <li>Only differences between logits matter. A softmax output saturates to 1 when its logit is far above the others, and to 0 when another is far above it.</li>
+          <li>z has n entries but only n − 1 are needed (they sum to 1) — overparametrized, but simpler and works fine.</li>
+          <li>Softmax = <b>competition</b> (like lateral inhibition in cortex): one goes up, others go down; extreme case = winner-take-all. It’s really a soft <b>arg</b>max (“softargmax”).</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Multinoulli</dt><dd>Categorical distribution over n classes.</dd>
+        <dt>Logits z</dt><dd>Unnormalized log-probabilities.</dd>
+        <dt>One-hot vector</dt><dd>1 at the correct class, 0 elsewhere.</dd>
+        <dt>Numerically stable</dt><dd>Avoids overflow: exp(1000) is infinite, but exp(0) is fine after subtracting the max.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Logits z = (2, 1, 0.1): \(e^z=(7.389,2.718,1.105)\), sum = 11.212.</li>
+        <li>softmax = (0.659, 0.242, 0.099).</li>
+        <li>True class 2: loss \(=-\log0.242=1.417\) (= \(-1+\log11.212=-1+2.417\)).</li>
+        <li>Gradient \(=\mathbf p-\text{onehot}=(0.659,\;0.242-1,\;0.099)=(0.659,-0.758,0.099)\).</li>
+        <li>Stable version: subtract max 2 → (0, −1, −1.9): \(e=(1,0.368,0.150)\), sum 1.518 → same probabilities.</li>
+      </ol></div>
+    </div>
+    <div data-widget="softmaxPlay"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch05-1.html#/s-tasks">Classification tasks (L1)</a> and <a href="ch05-4.html#/s-gen-disc">discriminative models (L2)</a>.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch07.html#/s-label-smoothing">Label smoothing (L6)</a>: softmax can never reach exactly 0/1, so we soften the targets. <a href="ch10.html#/s-rnn-designs">RNN outputs (L11)</a> use a softmax at every time step.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-hidden" data-part="Part 2 · Units & architecture (6.2.2–6.4)" data-title="Hidden units: ReLU & friends" data-stages="forward,backward">
+  <div class="slide-head"><span class="kicker">6.3 – 6.3.1 · Hidden units</span><h2>Rectified linear units and their generalizations</h2><div class="stages"></div></div>
+  <p class="bigidea"><b>ReLU is an excellent default.</b> It is almost linear, so the gradient is <b>large and consistent</b> (exactly 1) whenever the unit is active. Generalizations fix its one weakness: zero gradient when inactive.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mathbf h=g(\mathbf W^{\top}\mathbf x+\mathbf b),\qquad g(z)=\max\{0,z\} \]<span class="eqno">(6.36)</span>
+        \[ h_i=g(\mathbf z,\boldsymbol\alpha)_i=\max(0,z_i)+\alpha_i\min(0,z_i) \]<span class="eqno">abs (α = −1), leaky (α = 0.01), PReLU (α learned)</span>
+        \[ g(\mathbf z)_i=\max_{j\in\mathbb G^{(i)}}z_j,\quad\mathbb G^{(i)}=\{(i-1)k+1,\dots,ik\} \]<span class="eqno">(6.37) maxout</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Choosing hidden units is trial and error, checked on a validation set; ReLU is the safe start.</li>
+          <li>ReLU’s second derivative is 0 almost everywhere and its first derivative is 1 where active → no confusing second-order effects.</li>
+          <li>Initialize b to a small positive value (e.g. 0.1) so most units start active.</li>
+          <li>Drawback: no learning on examples where the unit is inactive. <b>Absolute value</b> (polarity-invariant image features), <b>leaky ReLU</b>, <b>PReLU</b> use a non-zero slope for z &lt; 0.</li>
+          <li>ReLU isn’t differentiable at 0 (left derivative 0, right derivative 1). It doesn’t matter: training rarely reaches a point with zero gradient, software returns a one-sided derivative, and an exact 0 is usually a rounded tiny number anyway.</li>
+          <li><b>Maxout</b> outputs the max of a group of k inputs: a learned, convex, piecewise-linear activation with up to k pieces; can approximate any convex function; k weight vectors per unit → needs more regularization.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Active unit</dt><dd>z &gt; 0, so the ReLU passes z (and the gradient) through.</dd>
+        <dt>Left / right derivative</dt><dd>Slope just left / right of a point; equal ⇔ differentiable.</dd>
+        <dt>Piecewise linear</dt><dd>Made of straight segments.</dd>
+        <dt>Leaky / PReLU</dt><dd>ReLU with a small or learned negative slope.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>z = (−0.5, 0.3, 2): ReLU → (0, 0.3, 2), slopes (0, 1, 1).</li>
+        <li>Leaky (α = 0.01) at −0.5: \(0+0.01\times(-0.5)=-0.005\), slope 0.01 — still learns a little.</li>
+        <li>Maxout with one group of 3: \(\max(-0.5,0.3,2)=2\); gradient goes only to the winner (third input).</li>
+      </ol></div>
+    </div>
+    <div data-widget="activationExplorer" data-acts="relu,leaky,abs,prelu,maxout"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag fwd">Leads to</span><span><a href="ch08-6.html#/s-design">Designing models to aid optimization (L9)</a>: ReLU is a key reason deep nets became trainable.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch08-3.html#/s-init-scale">He / normalized initialization (L8)</a>, tuned for ReLU.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-sigmoid-tanh" data-part="Part 2 · Units & architecture (6.2.2–6.4)" data-title="Sigmoid & tanh hidden units" data-stages="forward">
+  <div class="slide-head"><span class="kicker">6.3.2 · Logistic sigmoid and hyperbolic tangent</span><h2>Sigmoid and tanh: saturating units</h2><div class="stages"></div></div>
+  <p class="bigidea">Sigmoidal units saturate over most of their input range, which makes gradient learning hard — discouraged as hidden units. If you must, <b>tanh</b> is better than σ because it behaves like the identity near 0.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ g(z)=\sigma(z)=\frac{1}{1+e^{-z}},\qquad g(z)=\tanh(z),\qquad\tanh(z)=2\sigma(2z)-1 \]</div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Before ReLU, most networks used σ or tanh hidden units.</li>
+          <li>They are only sensitive to their input when z is near 0; elsewhere they saturate high or low → tiny gradients.</li>
+          <li>As <b>output</b> units they’re fine if the cost (log-likelihood) undoes the saturation.</li>
+          <li>tanh(0) = 0 while σ(0) = ½. So a deep tanh network \(\hat y=\mathbf w^\top\tanh(\mathbf U^\top\tanh(\mathbf V^\top\mathbf x))\) behaves like the linear model \(\mathbf w^\top\mathbf U^\top\mathbf V^\top\mathbf x\) while activations are small — easier to train.</li>
+          <li>Sigmoidal units remain common in <b>recurrent networks</b>, many probabilistic models and some autoencoders, where piecewise-linear units are ruled out.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Saturation</dt><dd>The flat regions where g′(z) ≈ 0.</dd>
+        <dt>tanh</dt><dd>Hyperbolic tangent, range (−1, 1), centred at 0.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>At z = 0: σ = 0.5, σ′ = 0.25; tanh = 0, tanh′ = 1.</li>
+        <li>At z = 5: σ′ = σ(1 − σ) = 0.9933 × 0.0067 = 0.0066; tanh′ = 1 − tanh²(5) = 0.00018. Both ≈ 0: saturated.</li>
+        <li>Check \(\tanh(z)=2\sigma(2z)-1\) at z = 1: \(2\sigma(2)-1=2(0.881)-1=0.762=\tanh(1)\) ✓.</li>
+      </ol></div>
+    </div>
+    <div data-widget="activationExplorer" data-acts="sigmoid,tanh,relu" data-title="Sigmoid vs. tanh vs. ReLU"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag fwd">Leads to</span><span><a href="ch10.html#/s-rnn-designs">RNNs (L11)</a> use tanh hidden states; <a href="ch08-1.html#/s-longterm">vanishing gradients (L7)</a> come from multiplying many small slopes.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-other-hidden" data-part="Part 2 · Units & architecture (6.2.2–6.4)" data-title="Other hidden units" data-stages="forward">
+  <div class="slide-head"><span class="kicker">6.3.3 · Other hidden units</span><h2>Other hidden units</h2><div class="stages"></div></div>
+  <p class="bigidea">Many differentiable functions work; new ones are only published if they <b>clearly</b> beat the standards. Some intuitive ideas (softplus) actually work <b>worse</b> than ReLU.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ h_i=\exp\Big(-\frac{1}{\sigma_i^2}\|\mathbf W_{:,i}-\mathbf x\|^2\Big)\ \ \text{(RBF)},\qquad g(a)=\max(-1,\min(1,a))\ \ \text{(hard tanh)},\qquad g(a)=\zeta(a)=\log(1+e^a) \]</div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li><b>Softmax</b> hidden units act as a switch over k options — used in architectures that learn to manipulate memory.</li>
+          <li><b>RBF</b>: most active when x is near a template \(\mathbf W_{:,i}\); saturates to 0 for most x → hard to optimize.</li>
+          <li><b>Hard tanh</b>: like tanh and the rectifier, but bounded.</li>
+          <li><b>Softplus</b>: a smooth rectifier; one might expect it to beat ReLU (differentiable everywhere, saturates less), but empirically it doesn’t — so its use is discouraged.</li>
+          <li>Even \(h=\cos(\mathbf W\mathbf x+\mathbf b)\) reached &lt; 1% error on MNIST.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>RBF</dt><dd>Radial basis function: a bump centred on a template.</dd>
+        <dt>MNIST</dt><dd>Classic dataset of 28×28 handwritten digits.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Softplus(0) = log 2 = 0.693; ReLU(0) = 0. Softplus(5) = 5.0067 ≈ ReLU(5) = 5.</li>
+        <li>Hard tanh(2.5) = max(−1, min(1, 2.5)) = 1; hard tanh(0.4) = 0.4.</li>
+        <li>RBF with \(\|\mathbf W_{:,i}-\mathbf x\|^2=0.5\), σ = 1: \(e^{-0.5}=0.607\); at distance² 9: \(e^{-9}=0.0001\) — saturated.</li>
+      </ol></div>
+    </div>
+    <div data-widget="activationExplorer" data-acts="softplus,hardtanh,rbf,cos,relu" data-title="Other activation functions"></div>
+  </div>
+</section>
+
+<section class="slide" id="s-arch" data-part="Part 2 · Units & architecture (6.2.2–6.4)" data-title="Architecture: depth & width" data-stages="init">
+  <div class="slide-head"><span class="kicker">6.4 · Architecture design</span><h2>Architecture: layers in a chain, depth and width</h2><div class="stages"></div></div>
+  <p class="bigidea">One hidden layer can fit the training set, but <b>deeper</b> networks often use <b>far fewer units and parameters</b> and generalize better — at the price of being harder to optimize. Choose by validation error.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mathbf h^{(1)}=g^{(1)}\big(\mathbf W^{(1)\top}\mathbf x+\mathbf b^{(1)}\big),\qquad\mathbf h^{(2)}=g^{(2)}\big(\mathbf W^{(2)\top}\mathbf h^{(1)}+\mathbf b^{(2)}\big),\ \dots \]<span class="eqno">(6.40–6.41)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li><b>Architecture</b> = how many units, and how they connect. Most networks: groups of units called layers, arranged in a <b>chain</b>.</li>
+          <li>Main choices for chains: <b>depth</b> (number of layers) and <b>width</b> (units per layer).</li>
+          <li>The ideal architecture is found by experiment, monitoring the validation error.</li>
+          <li>The demo shows the depth advantage: each layer “folds” the input; k layers with 2 ReLUs each make \(2^k\) linear pieces, which a single layer would need ~\(2^k\) units for.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Architecture</dt><dd>The overall structure: units and connections.</dd>
+        <dt>Chain structure</dt><dd>Each layer is a function of the previous layer only.</dd>
+        <dt>Linear region / piece</dt><dd>An input range where a ReLU network is exactly linear.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>MNIST MLP: 784 inputs → 100 → 100 → 100 → 10 outputs.</li>
+        <li>Parameters: \((784\cdot100+100)+(100\cdot100+100)\times2+(100\cdot10+10)=78\,500+20\,200+1\,010=99\,710\).</li>
+        <li>Depth trick: 5 folding layers (10 ReLU units) give \(2^5=32\) linear pieces.</li>
+      </ol></div>
+    </div>
+    <div data-widget="foldDemo"></div>
+  </div>
+</section>
+
+<section class="slide" id="s-uat" data-part="Part 2 · Units & architecture (6.2.2–6.4)" data-title="Universal approximation & depth" data-stages="init">
+  <div class="slide-head"><span class="kicker">6.4.1 · Universal approximation properties and depth</span><h2>Universal approximation: enough width can represent anything</h2><div class="stages"></div></div>
+  <p class="bigidea">With one hidden layer and enough units, an MLP can approximate <b>any</b> continuous function on a bounded region. But it may need an <b>exponential</b> number of units, and training may still <b>fail</b> or <b>overfit</b>. Depth makes the representation much more efficient.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li><b>Theorem</b>: a feedforward net with a linear output layer and ≥ 1 hidden layer with a “squashing” activation (e.g. sigmoid) can approximate any Borel-measurable function between finite-dimensional spaces to any non-zero error, given enough hidden units. Its derivatives can approximate the function’s derivatives too.</li>
+          <li>Practically: any continuous function on a closed, bounded subset of \(\mathbb R^n\) (and any function between finite discrete spaces). Later proofs cover <b>ReLU</b> too.</li>
+          <li>Representable ≠ learnable. Learning can fail because the <b>optimizer</b> can’t find the parameters, or because training <b>overfits</b> and picks the wrong function.</li>
+          <li>Worst case: one hidden unit per input configuration to distinguish → exponentially many.</li>
+          <li>Choosing depth expresses a belief that the function is a <b>composition of simpler functions</b>, or a <b>multi-step program</b> (intermediate outputs like counters/pointers). Empirically, greater depth generalizes better on many tasks.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Squashing function</dt><dd>Activation that saturates at both ends (like σ).</dd>
+        <dt>Borel measurable</dt><dd>A very broad class of functions; includes all continuous functions on bounded regions.</dd>
+        <dt>Representational capacity</dt><dd>What the network <em>can</em> express (vs. what training finds).</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>A 1-D ReLU network with k hidden units is piecewise linear with at most k kinks.</li>
+        <li>Approximating sin(6x) on [0, 1] with straight segments: error drops roughly like 1/k² as segments shrink.</li>
+        <li>A step function needs a near-vertical piece: with k = 100 units the error is small but never exactly zero (non-zero error is all the theorem promises).</li>
+      </ol></div>
+    </div>
+    <div data-widget="uatWidth"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch05-4.html#/s-smoothness">Composition of factors (L2)</a>: the prior that depth encodes.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="ch07.html#/s-reg-what">Regularization (L6)</a>: huge capacity must be controlled to generalize.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-arch-other" data-part="Part 2 · Units & architecture (6.2.2–6.4)" data-title="Skip & sparse connections" data-stages="init,forward">
+  <div class="slide-head"><span class="kicker">6.4.2 · Other architectural considerations</span><h2>Beyond the plain chain: skip connections and sparse connectivity</h2><div class="stages"></div></div>
+  <p class="bigidea">Layers need not form a simple chain. <b>Skip connections</b> help gradients reach early layers; <b>sparser</b> connection patterns cut parameters and computation for specific problems.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Many architectures have a main chain plus extras such as <b>skip connections</b> from layer i to layer i + 2 or higher. They make it easier for the gradient to flow from the output to layers near the input.</li>
+          <li>How to connect a pair of layers: the default (matrix W) connects every input unit to every output unit — <b>fully connected</b>.</li>
+          <li>Specialized networks connect each unit to only a small subset → fewer parameters, less computation, but the pattern is <b>problem dependent</b> (e.g. convolutional nets for images).</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Fully connected (dense)</dt><dd>Every input unit is linked to every output unit.</dd>
+        <dt>Sparse / local connectivity</dt><dd>Each output unit sees only a few inputs.</dd>
+        <dt>Skip connection</dt><dd>A shortcut that bypasses one or more layers.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Fully connected 1 000 → 1 000 units: \(10^6\) weights.</li>
+        <li>Local connections where each output sees 9 inputs: \(9\,000\) weights — 111× fewer.</li>
+        <li>A skip connection adds the earlier layer’s output: \(\mathbf h^{(i+2)}=f(\mathbf h^{(i+1)})+\mathbf h^{(i)}\), so \(\partial\mathbf h^{(i+2)}/\partial\mathbf h^{(i)}\) contains an identity term that never vanishes.</li>
+      </ol></div>
+    </div>
+    <div data-widget="connectivity"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag fwd">Leads to</span><span><a href="ch09.html#/s-sparse">Sparse interactions in CNNs (L10)</a>, <a href="ch08-6.html#/s-design">skip connections for optimization (L9)</a>, <a href="ch10.html#/s-leaky">skip connections through time (L11)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-summary" data-part="Wrap-up" data-title="Summary: how it all connects" data-stages="init,forward,loss">
+  <div class="slide-head"><span class="kicker">Wrap-up</span><h2>Summary: how it all connects</h2><div class="stages"></div></div>
+  <p class="bigidea">A network = layers of \(g(\mathbf W^\top\mathbf x+\mathbf b)\) that <b>learn their own features</b>. The <b>output unit</b> + <b>NLL</b> come from the output distribution; <b>ReLU</b> hidden units keep gradients healthy; <b>depth</b> gives efficient representations.</p>
+  <div class="card" style="padding:0;overflow:hidden"><div class="scroll-x"><table class="data-table">
+    <thead><tr><th>Output y is…</th><th>Distribution</th><th>Output unit</th><th>Loss (NLL)</th><th>∂L/∂(pre-activation)</th></tr></thead>
+    <tbody>
+      <tr><td>real number</td><td>Gaussian</td><td>linear \(\mathbf W^\top\mathbf h+\mathbf b\)</td><td>\(\frac12\|\mathbf y-\hat{\mathbf y}\|^2\) (MSE)</td><td>\(\hat{\mathbf y}-\mathbf y\)</td></tr>
+      <tr><td>0 / 1</td><td>Bernoulli</td><td>sigmoid \(\sigma(z)\)</td><td>\(\zeta((1-2y)z)\)</td><td>\(\sigma(z)-y\)</td></tr>
+      <tr><td>one of n classes</td><td>multinoulli</td><td>softmax</td><td>\(-z_y+\log\sum e^{z_j}\)</td><td>\(\text{softmax}(\mathbf z)-\text{onehot}(y)\)</td></tr>
+    </tbody>
+  </table></div></div>
+  <div class="row3" style="margin-top:16px">
+    <div class="card plain"><h3><span class="dot"></span>Hidden units</h3><p>ReLU default; leaky / PReLU / maxout to avoid dead units; σ and tanh saturate (tanh better); many others work similarly.</p></div>
+    <div class="card plain"><h3><span class="dot"></span>Next lecture</h3><p><a href="ch06-5.html">Back-propagation</a>: how to compute \(\nabla_{\boldsymbol\theta}J\) for all these layers efficiently.</p></div>
+    <div class="card fit"><h3><span class="dot"></span>Check yourself</h3><p>Ten quiz questions with explanations.</p><button class="btn primary" type="button" data-goto="s-quiz" style="margin-top:6px">Take the quiz →</button></div>
+  </div>
+</section>
+
+<section class="slide" id="s-quiz" data-part="Wrap-up" data-title="Check yourself (quiz)">
+  <div class="slide-head"><span class="kicker">Wrap-up</span><h2>Check yourself</h2><p class="lede">Pick an answer to see whether it is right and why.</p></div>
+  <div data-widget="quiz"></div>
+  <footer class="credits">Study notes for Deep Learning, chapter 6.1–6.4. Equation numbers follow Goodfellow, Bengio &amp; Courville, <em>Deep Learning</em> (MIT Press, 2016). Explanations, diagrams and demos are original.</footer>
+</section>
+
+</main>
+</body>
+</html>
