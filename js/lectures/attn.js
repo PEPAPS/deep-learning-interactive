@@ -281,13 +281,11 @@ Widgets.weightedSum = (el) => {
     rows.innerHTML = '';
     const list = h('div', { class: 'hbars' });
     S.words.forEach((w, j) => list.append(h('div', { class: 'hbar' },
-      h('div', { class: 'lab' }, `a(${st.i + 1}, ${j + 1}) · v_${j + 1}  — “${w}”`),
-      h('div', { class: 'track', style: 'display:flex;align-items:center;gap:8px' },
-        h('div', { class: 'fill', style: `width:${100 * a[j]}%;--c:var(--s1)` }),
-        h('span', { class: 'val' }, `${fx(a[j], 2)} × ${vec(at.V[j])}`)))));
+      h('div', { class: 'lab' }, `“${w}”: a(${st.i + 1}, ${j + 1}) = ${fx(a[j], 2)}`, h('small', { style: 'display:block;font-family:var(--mono);font-size:.7rem;color:var(--muted)' }, `× v_${j + 1} = ${vec(at.V[j])}`)),
+      h('div', { class: 'track' }, h('div', { class: 'fill', style: `width:${100 * a[j]}%;--c:var(--s1)` }), h('span', { class: 'val' }, fx(a[j], 2))))));
     rows.append(list);
     out.innerHTML = '';
-    out.append(gw(`A (${n} × ${n}) — row ${st.i + 1} highlighted`, numGrid(at.A, { rowLabels: S.words, colLabels: S.words, hl: r => r === st.i, cs: 40, heat: true })), gop('×'), gw(`V (${n} × ${DV})`, numGrid(at.V, { rowLabels: S.words, cs: 44 })), gop('='), gw(`Z (${n} × ${DV})`, numGrid(at.Z, { rowLabels: S.words, hl: r => r === st.i, cs: 48 })));
+    out.append(gw(`A (${n} × ${n}) — row ${st.i + 1} highlighted`, numGrid(at.A, { rowLabels: S.words, colLabels: S.words, hl: r => r === st.i, cs: 30, heat: true })), gop('×'), gw(`V (${n} × ${DV})`, numGrid(at.V, { rowLabels: S.words, cs: 36 })), gop('='), gw(`Z (${n} × ${DV})`, numGrid(at.Z, { rowLabels: S.words, hl: r => r === st.i, cs: 38 })));
     calc.innerHTML = `z_${st.i + 1} = Σ_j a(${st.i + 1}, j) · v_j\n` + at.Z[st.i].map((zv, m) => `  z_${st.i + 1}[${m + 1}] = ${a.map((av, j) => `${fx(av, 2)}·${pn(at.V[j][m])}`).join(' + ')} = <b>${fx(zv)}</b>`).join('\n') + `\n<span class="c">z_${st.i + 1} is the “hidden state” of “${S.words[st.i]}” after one self-attention layer: its own value blended with the values of the tokens it attends to. Since the weights sum to 1, z stays in the range of the values.</span>`;
   }
   draw();

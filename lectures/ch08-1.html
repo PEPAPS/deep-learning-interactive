@@ -394,7 +394,7 @@ window.TOPICS = {
 <section class="slide" id="s-limits" data-part="Part 2 · Challenges (8.2)" data-title="Theoretical limits" data-stages="final">
   <div class="slide-head"><span class="kicker">8.2.8 · Theoretical limits of optimization</span><h2>Theoretical limits of optimization</h2><div class="stages"></div></div>
   <p class="bigidea">Theorems show that some network-training problems are intractable — but they have <b>little bearing on practice</b>: real units are smooth, and a <b>larger network</b> makes acceptable solutions much easier to find.</p>
-  <div class="row2">
+  <div class="row3">
     <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
       <ul>
         <li>Some results only apply to units with <b>discrete</b> outputs; most real units are smooth, so local search works.</li>
@@ -403,7 +403,13 @@ window.TOPICS = {
         <li>We don’t need the exact minimum — just a value low enough to <b>generalize</b> well. Analysing whether an algorithm achieves that is very hard; realistic bounds remain an open research goal.</li>
       </ul>
     </div>
-    <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+    <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Intractable</dt><dd>No algorithm can solve every instance of the problem in reasonable (polynomial) time.</dd>
+        <dt>Local search</dt><dd>Methods such as gradient descent that improve the current point step by step, without a global view.</dd>
+        <dt>Over-parametrization</dt><dd>Using many more parameters than strictly necessary; many different parameter settings then solve the task.</dd>
+        <dt>Generalization bound</dt><dd>A theoretical guarantee on the test error; realistic bounds for deep networks remain an open problem.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
       <li>XOR with exactly 2 hidden ReLU units: the earlier demo (L4) solved it in only ~3 of 10 random starts.</li>
       <li>With 8 hidden units, almost every random start reaches zero error: many more parameter settings are solutions.</li>
       <li>Over-parametrizing makes optimization <b>easier</b>, and regularization (L6) controls the extra capacity.</li>

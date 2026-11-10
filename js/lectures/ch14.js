@@ -12,11 +12,11 @@ const calcBox = () => h('div', { class: 'calcbox' });
 const stat = (k, v) => h('div', { class: 'stat' }, h('div', { class: 'k' }, k), h('div', { class: 'v', html: v }));
 const gw = (cap, node) => h('div', { class: 'gwrap' }, h('div', { class: 'gcap' }, cap), node);
 const gop = s => h('div', { class: 'gop' }, s);
-const rowBox = (...kids) => h('div', { class: 'grids', style: 'align-items:center;gap:8px 10px;padding:6px 10px;border-radius:10px;background:var(--surface-2)' }, kids);
+const rowBox = (...kids) => h('div', { style: 'display:flex;flex-wrap:nowrap;overflow-x:auto;align-items:center;gap:8px;padding:6px 10px;border-radius:10px;background:var(--surface-2);max-width:100%' }, kids);
 
 /* an 8×8 grayscale image drawn as a grid of shaded cells */
 function imgGrid(px, o = {}) {
-  const n = o.n || 8, cs = o.cs || 18, c = Colors.get();
+  const n = o.n || 8, cs = o.cs || 14, c = Colors.get();
   const g = h('div', { class: 'cgrid' + (o.onClick ? ' click' : ''), style: `grid-template-columns:repeat(${n}, ${cs}px);--cs:${cs}px`, title: o.title || null });
   for (let i = 0; i < n * n; i++) {
     const v = clamp(px[i], 0, 1);
@@ -205,10 +205,10 @@ Widgets.bottleneckImages = (el) => {
   el.append(rows, stats, calc);
   function draw() {
     rows.innerHTML = '';
-    const idx = [0, 1, 2, 3].map(i => (page * 4 + i * 7) % BARS.N);
+    const idx = [0, 1, 2].map(i => (page * 3 + i * 7) % BARS.N);
     const show = (x, cap, novel) => {
       const hv = BARS.encode(x, k), r = BARS.decode(hv), e = BARS.mse(x, r);
-      rows.append(rowBox(gw(cap, imgGrid(x)), gop('→ f →'), gw(`code (${k} numbers)`, codeRow(hv.slice(0, Math.min(k, 16)), { cs: 12 })), k > 16 ? h('span', { class: 'note' }, `… +${k - 16} more`) : null, gop('→ g →'), gw(`r · MSE ${fx(e, 4)}`, imgGrid(r)), novel ? h('span', { class: 'pill', style: 'background:color-mix(in srgb,var(--critical) 18%,var(--surface))' }, 'never seen in training') : null));
+      rows.append(rowBox(gw(cap, imgGrid(x)), gop('→ f →'), gw(`code (${k} numbers)`, codeRow(hv.slice(0, Math.min(k, 12)), { cs: 9 })), k > 12 ? h('span', { class: 'note', style: 'white-space:nowrap' }, `+${k - 12}`) : null, gop('→ g →'), gw(`r · MSE ${fx(e, 4)}`, imgGrid(r)), novel ? h('span', { class: 'pill', style: 'background:color-mix(in srgb,var(--critical) 18%,var(--surface))' }, 'never seen in training') : null));
       return e;
     };
     idx.forEach(i => show(BARS.X[i], `train #${i + 1} (${BARS.FAM[BARS.fam[i]]})`));
@@ -692,7 +692,7 @@ Widgets.hashRetrieval = (el) => {
   const btns = h('div', { class: 'btns' });
   UI.button(btns, 'Random query image', () => { q = Math.floor(Math.random() * BARS.N); draw(); });
   el.append(ctr, btns);
-  const head = h('div', { class: 'stack' }), table = h('div', { class: 'grids', style: 'align-items:flex-start' }), stats = h('div', { class: 'stat-row' }), calc = calcBox();
+  const head = h('div', { class: 'stack' }), table = h('div', { class: 'hbars' }), stats = h('div', { class: 'stat-row' }), calc = calcBox();
   el.append(head, table, stats, calc);
   const codes = BARS.X.map(x => BARS.encode(x, 6));
   function draw() {
@@ -701,14 +701,13 @@ Widgets.hashRetrieval = (el) => {
     codes.forEach((hv, i) => { const b = bits(hv); if (!buckets.has(b)) buckets.set(b, []); buckets.get(b).push(i); });
     const qb = bits(codes[q]);
     head.innerHTML = '';
-    head.append(rowBox(gw('query', imgGrid(BARS.X[q])), gop('→ f → sign →'), gw('its bits', h('div', { class: 'io' }, h('span', { class: 'box', style: 'font-weight:700' }, qb))), gop('→ bucket →'), gw(`${buckets.get(qb).length} images returned`, h('div', { class: 'grids', style: 'gap:4px' }, buckets.get(qb).filter(i => i !== q).slice(0, 8).map(i => imgGrid(BARS.X[i], { cs: 9, onClick: () => { q = i; draw(); }, title: 'click to make this the query' }))))));
+    head.append(rowBox(gw('query', imgGrid(BARS.X[q])), gop('→ f → sign →'), gw('its bits', h('div', { class: 'io' }, h('span', { class: 'box', style: 'font-weight:700' }, qb))), gop('→ bucket →'), gw('returned', h('div', { style: 'display:flex;gap:4px' }, buckets.get(qb).filter(i => i !== q).slice(0, 5).map(i => imgGrid(BARS.X[i], { cs: 7, onClick: () => { q = i; draw(); }, title: 'click to make this the query' }))))));
     table.innerHTML = '';
     [...buckets.keys()].sort().forEach(b => {
       const list = buckets.get(b);
-      const col = h('div', { class: 'gwrap', style: `padding:6px;border-radius:8px;border:1px solid var(--border);${b === qb ? 'background:var(--accent-soft);outline:2px solid var(--accent)' : ''}` },
-        h('div', { class: 'gcap', style: 'font-family:var(--mono)' }, `${b} (${list.length})`),
-        h('div', { class: 'grids', style: 'gap:3px;max-width:120px' }, list.slice(0, 12).map(i => imgGrid(BARS.X[i], { cs: 5, onClick: () => { q = i; draw(); }, title: `#${i + 1} — click to query` }))));
-      table.append(col);
+      table.append(h('div', { class: 'hbar', style: `grid-template-columns:84px 1fr;padding:4px 8px;border-radius:8px;${b === qb ? 'background:var(--accent-soft);outline:2px solid var(--accent)' : 'background:var(--surface-2)'}` },
+        h('div', { class: 'lab', style: 'font-family:var(--mono);font-weight:700;color:var(--text)' }, 'bucket ' + b, h('small', { style: 'display:block;font-family:var(--font);font-weight:400;color:var(--muted)' }, `${list.length} image${list.length !== 1 ? 's' : ''}`)),
+        h('div', { style: 'display:flex;gap:3px;overflow:hidden' }, list.slice(0, 12).map(i => imgGrid(BARS.X[i], { cs: 4, onClick: () => { q = i; draw(); }, title: `#${i + 1} — click to query` })))));
     });
     stats.innerHTML = '';
     stats.append(stat('possible buckets 2^m', String(2 ** m)), stat('buckets in use', String(buckets.size)), stat('linear scan', '72 comparisons'), stat('hash lookup', `1 lookup + ${buckets.get(qb).length - 1} candidates`));

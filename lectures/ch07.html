@@ -62,7 +62,7 @@ window.TOPICS = {
 <section class="slide" id="s-reg-what" data-part="Part 1 · Penalties & data (7.1–7.5)" data-title="What regularization is" data-stages="loss,final">
   <div class="slide-head"><span class="kicker">7 · Regularization</span><h2>Regularization: trade a little training error for test error</h2><div class="stages"></div></div>
   <p class="bigidea">Regularization = any change to the learning algorithm meant to reduce <b>generalization</b> error, not training error. In practice the best model is almost always a <b>large</b> model that has been <b>regularized appropriately</b>.</p>
-  <div class="row2">
+  <div class="row3">
     <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
       <ul>
         <li>Many strategies are explicitly designed to reduce test error, possibly at the cost of higher training error — collectively, <b>regularization</b>.</li>
@@ -70,7 +70,14 @@ window.TOPICS = {
         <li>Rather than searching for a model of exactly the right size, take a big network and control its <b>effective capacity</b>.</li>
       </ul>
     </div>
-    <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+    <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Regularization</dt><dd>Any modification to a learning algorithm intended to reduce its generalization error but not its training error.</dd>
+        <dt>Generalization error</dt><dd>The error on new, unseen data (L1); the number we actually care about.</dd>
+        <dt>Effective capacity</dt><dd>The complexity a model actually uses after regularization, as opposed to everything it could represent.</dd>
+        <dt>Bias / variance</dt><dd>Systematic error / sensitivity to the particular training set (L2). Regularizers trade a little bias for less variance.</dd>
+        <dt>Weight decay, dropout</dt><dd>The two most common regularizers for deep networks — both explained later in this lecture.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
       <li>Unregularized big network: training error 0.02, test error 0.30 (gap 0.28 → overfitting).</li>
       <li>Same network with dropout + weight decay: training error 0.05, test error 0.18.</li>
       <li>Training error went <b>up</b> by 0.03, test error went <b>down</b> by 0.12 — that is what “regularization” means.</li>
