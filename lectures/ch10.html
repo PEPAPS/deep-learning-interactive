@@ -10,13 +10,13 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
-<link rel="stylesheet" href="../css/style.css?v=18">
+<link rel="stylesheet" href="../css/style.css?v=19">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
-<script defer src="../js/core.js?v=18"></script>
-<script defer src="../js/course.js?v=18"></script>
-<script defer src="../js/quiz.js?v=18"></script>
-<script defer src="../js/lectures/ch10.js?v=18"></script>
+<script defer src="../js/core.js?v=19"></script>
+<script defer src="../js/course.js?v=19"></script>
+<script defer src="../js/quiz.js?v=19"></script>
+<script defer src="../js/lectures/ch10.js?v=19"></script>
 </head>
 <body data-page="lecture" data-lecture="ch10">
 <script>
@@ -155,6 +155,10 @@ window.TOPICS = {
     </div>
     <div data-widget="rnnPatterns"></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="#/s-unfold">unfolding (this lecture)</a>.</span></li>
+    <li><span class="tag fwd">Used by</span><span><a href="#/s-forward">the forward equations (this lecture)</a>, <a href="#/s-teacher">teacher forcing (this lecture)</a>.</span></li>
+  </ul></div>
 </section>
 
 <section class="slide" id="s-forward" data-part="Part 1 · RNN basics (10.1–10.2)" data-title="Forward propagation & the loss" data-stages="forward,loss">
@@ -224,6 +228,10 @@ window.TOPICS = {
     </div>
     <div data-widget="teacherForcing"></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="#/s-rnn-designs">output-to-hidden recurrence (this lecture)</a>, <a href="ch05-4.html#/s-mle">maximum likelihood (L2)</a>.</span></li>
+    <li><span class="tag fwd">Used by</span><span><a href="#/s-bptt">back-propagation through time (this lecture)</a>.</span></li>
+  </ul></div>
 </section>
 
 <section class="slide" id="s-bptt" data-part="Part 1 · RNN basics (10.1–10.2)" data-title="Back-propagation through time" data-stages="backward">
@@ -295,6 +303,10 @@ window.TOPICS = {
     </div>
     <div data-widget="birnnDemo"></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="#/s-forward">the forward pass (this lecture)</a>.</span></li>
+    <li><span class="tag fwd">Used by</span><span><a href="#/s-deep-rnn">deep RNNs (this lecture)</a>, <a href="attn.html#/s-why">self-attention sees both directions at once (L14)</a>.</span></li>
+  </ul></div>
 </section>
 
 <section class="slide" id="s-deep-rnn" data-part="Part 2 · Architectures (10.3–10.6)" data-title="Deep recurrent networks" data-stages="forward">
@@ -351,6 +363,10 @@ window.TOPICS = {
     </div>
     <div data-widget="treeVsChain"></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch06-5.html#/s-graph">computational graphs (L5)</a>.</span></li>
+    <li><span class="tag fwd">Used by</span><span><a href="#/s-longterm">why shorter paths help with long-term dependencies (this lecture)</a>.</span></li>
+  </ul></div>
 </section>
 
 <!-- ============================================================ -->
@@ -520,6 +536,10 @@ window.TOPICS = {
     </div>
     <div data-widget="gruUpdate"></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="#/s-lstm">the LSTM (this lecture)</a>.</span></li>
+    <li><span class="tag fwd">Used by</span><span><a href="#/s-clip">gradient clipping (this lecture)</a>.</span></li>
+  </ul></div>
 </section>
 
 <section class="slide" id="s-clip" data-part="Part 3 · Long-term dependencies (10.7–10.11)" data-title="Clipping gradients" data-stages="update">
@@ -582,6 +602,10 @@ window.TOPICS = {
     </div>
     <div data-widget="infoFlow"></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="#/s-longterm">vanishing gradients (this lecture)</a>, <a href="#/s-clip">clipping (this lecture)</a>.</span></li>
+    <li><span class="tag fwd">Used by</span><span><a href="attn.html#/s-why">path length 1 in self-attention (L14)</a>.</span></li>
+  </ul></div>
 </section>
 
 <section class="slide" id="s-summary" data-part="Wrap-up" data-title="Summary: how it all connects" data-stages="forward,loss,backward,update">
@@ -604,7 +628,7 @@ window.TOPICS = {
   </table></div></div>
   <div class="row3" style="margin-top:16px">
     <div class="card plain"><h3><span class="dot"></span>Remember</h3><p>An RNN is a very deep network unrolled in time whose layers all share the same weights.</p></div>
-    <div class="card plain"><h3><span class="dot"></span>The whole course</h3><p>Go back to the <a href="../index.html">course map</a> to see how every lecture connects in the training loop.</p></div>
+    <div class="card plain"><h3><span class="dot"></span>Next lecture</h3><p>Networks can also learn <b>without labels</b>: <a href="ch14.html">Lecture 12 — Autoencoders</a>. Or go back to the <a href="../index.html">course map</a>.</p></div>
     <div class="card fit"><h3><span class="dot"></span>Check yourself</h3><p>Twelve quiz questions with explanations.</p><button class="btn primary" type="button" data-goto="s-quiz" style="margin-top:6px">Take the quiz →</button></div>
   </div>
 </section>

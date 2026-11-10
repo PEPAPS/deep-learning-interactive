@@ -1,0 +1,611 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Autoencoders</title>
+<meta name="description" content="Interactive notes for Deep Learning chapter 14: encoder and decoder, undercomplete autoencoders and PCA, the identity trap, regularized autoencoders (sparse, denoising, contractive), depth, dimensionality reduction and semantic hashing — with every term and formula explained and live demos.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232a78d6'/%3E%3Cpath d='M6 9c5 0 6 14 10 14s5-14 10-14' fill='none' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<link rel="stylesheet" href="../css/style.css?v=19">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script defer src="../js/core.js?v=19"></script>
+<script defer src="../js/course.js?v=19"></script>
+<script defer src="../js/quiz.js?v=19"></script>
+<script defer src="../js/lectures/ch14.js?v=19"></script>
+</head>
+<body data-page="lecture" data-lecture="ch14">
+<script>
+window.TOPICS = {
+  data: [['s-what', 'Unlabeled data: x is its own target'], ['s-denoising', 'Corrupt the input on purpose']],
+  init: [['s-depth', 'Shallow or deep encoder / decoder']],
+  forward: [['s-what', 'Encoder h = f(x), decoder r = g(h)'], ['s-undercomplete', 'The bottleneck code'], ['s-stochastic', 'Stochastic encoder / decoder']],
+  loss: [['s-undercomplete', 'Reconstruction loss L(x, g(f(x)))'], ['s-sparse', 'Sparsity penalty Ω(h)'], ['s-denoising', 'Denoising loss'], ['s-contractive', 'Jacobian penalty']],
+  backward: [['s-contractive', 'The penalty itself contains ∂f/∂x']],
+  update: [['s-pca', 'Gradient descent finds PCA by itself']],
+  final: [['s-applications', 'Use the code: dimensionality reduction'], ['s-retrieval', 'Semantic hashing']]
+};
+</script>
+
+<main class="deck" id="deck">
+
+<section class="slide" id="s-title" data-part="Start here" data-title="Welcome: learning by copying">
+  <div class="slide-head">
+    <span class="kicker">Lecture 12 · Chapter 14</span>
+    <h1>Autoencoders: learning by copying</h1>
+    <p class="lede">An autoencoder is a network trained to <b>copy its input to its output</b> — through a <b>code</b> in the middle. The trick is to make perfect copying <b>impossible</b> (a small code, a sparsity penalty, noisy inputs, or a derivative penalty) so that the network must <b>prioritize</b> what to keep. What it keeps is a useful description of the data: features, a compression, a way to denoise, or a way to search.</p>
+  </div>
+  <div class="road">
+    <div class="card big"><span class="kicker">Part 1 · 14 – 14.1</span><h4>The idea and the bottleneck</h4><ol><li>Encoder, decoder, reconstruction</li><li>Stochastic versions</li><li>Undercomplete codes, PCA, the identity trap</li></ol><button class="btn primary go" type="button" data-goto="s-what">Start →</button></div>
+    <div class="card big"><span class="kicker">Part 2 · 14.2</span><h4>Regularized autoencoders</h4><ol><li>Sparse (and the Laplace prior)</li><li>Denoising (and what it learns)</li><li>Contractive (and how it relates to denoising)</li></ol><button class="btn primary go" type="button" data-goto="s-regularized">Jump →</button></div>
+    <div class="card big"><span class="kicker">Part 3 · 14.3 – 14.8</span><h4>Depth and applications</h4><ol><li>Shallow vs. deep autoencoders</li><li>Dimensionality reduction</li><li>Information retrieval, semantic hashing</li></ol><button class="btn primary go" type="button" data-goto="s-depth">Jump →</button></div>
+  </div>
+</section>
+
+<section class="slide" id="s-loop" data-part="Start here" data-title="Where this lecture fits" data-stages="data,forward,loss,final">
+  <div class="slide-head"><span class="kicker">Start here</span><h2>Where autoencoders fit in training</h2><div class="stages"></div></div>
+  <p class="bigidea">An autoencoder is an ordinary feedforward network trained with the ordinary loop — the only differences are <b>what the target is</b> (the input itself, so no labels are needed), <b>what the loss contains</b> (reconstruction error plus, maybe, a penalty), and <b>what we keep at the end</b> (the code and the encoder, not the output).</p>
+  <div class="stack"><div data-widget="loop"></div>
+    <div class="row3">
+      <div class="card plain"><h3><span class="dot"></span>From L4 and L5</h3><p>Encoder and decoder are just layers; back-propagation trains them. “Autoencoders may be trained with all the same techniques.”</p></div>
+      <div class="card plain"><h3><span class="dot"></span>From L6</h3><p>Sparsity penalties, noise and derivative penalties are regularizers — here they are what makes copying useful.</p></div>
+      <div class="card plain"><h3><span class="dot"></span>New here</h3><p>Unsupervised learning: no labels, the data explain themselves. The code h becomes the product — a representation.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-what" data-part="Part 1 · The idea and the bottleneck (14–14.1)" data-title="What an autoencoder is" data-stages="data,forward">
+  <div class="slide-head"><span class="kicker">14 · Autoencoders</span><h2>Encoder, code, decoder — and why copying is not useless</h2><div class="stages"></div></div>
+  <p class="bigidea">Two functions: an <b>encoder</b> \(\mathbf h = f(\mathbf x)\) that squeezes the input into a code, and a <b>decoder</b> \(\mathbf r = g(\mathbf h)\) that rebuilds the input. If it could learn \(g(f(\mathbf x))=\mathbf x\) everywhere it would be useless — so it is built to copy only <b>approximately</b>, and only inputs that <b>resemble the training data</b>.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mathbf h = f(\mathbf x) \qquad \mathbf r = g(\mathbf h) = g(f(\mathbf x)) \approx \mathbf x \]<span class="eqno">encoder · decoder · reconstruction</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Think of a game of “telephone” through a narrow pipe: whatever does not fit through the pipe (the code) cannot come out the other side. The network must decide <b>what matters most</b> about an input.</li>
+          <li>We usually do not care about the output r at all — we care about the <b>code h</b> and the <b>encoder f</b>, because to copy well, h must contain a compact, useful description of x.</li>
+          <li>Because it is forced to prioritize, an autoencoder “often learns useful properties of the data” — features for classification, a compression, a notion of similarity.</li>
+          <li>It is a special case of a feedforward network: the same layers, the same back-propagation, the same optimizers.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Autoencoder</dt><dd>A network trained to output a copy of its input.</dd>
+        <dt>Encoder f</dt><dd>The first half: input x → code h.</dd>
+        <dt>Code h</dt><dd>The hidden representation in the middle (also “latent representation”).</dd>
+        <dt>Decoder g</dt><dd>The second half: code h → reconstruction r.</dd>
+        <dt>Reconstruction r</dt><dd>The network’s attempt to copy x.</dd>
+        <dt>Identity function</dt><dd>g(f(x)) = x for every x — perfect copying, which teaches nothing.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Input x = (1, 1, 0.4, 0.4). Encoder with weights 0.5: h₁ = 0.5·1 + 0.5·1 = 1, h₂ = 0.5·0.4 + 0.5·0.4 = 0.4.</li>
+        <li>Decoder repeats each code number: r = (1, 1, 0.4, 0.4). Loss Σ(xᵢ − rᵢ)² = 0 — copied.</li>
+        <li>Input x = (1, −1, 0.5, −0.2): h = (0, 0.15), r = (0, 0, 0.15, 0.15). Loss = 1 + 1 + 0.1225 + 0.1225 = 2.245 — the within-pair differences did not fit through the code.</li>
+      </ol></div>
+    </div>
+    <div data-widget="aeAnatomy"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch06-1.html#/s-ffn">Feedforward networks (L4)</a>, <a href="ch06-5.html#/s-mlp-backprop">back-propagation (L5)</a> and <a href="ch05-1.html#/s-experience">unsupervised experience (L1)</a>.</span></li>
+    <li><span class="tag fwd">Used by</span><span><a href="ch15.html#/s-shared-features">Transfer learning reuses learned representations (L13)</a>; <a href="ch08-6.html#/s-pretrain">unsupervised pretraining (L9)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-stochastic" data-part="Part 1 · The idea and the bottleneck (14–14.1)" data-title="Stochastic encoders and decoders" data-stages="forward">
+  <div class="slide-head"><span class="kicker">14 · Modern autoencoders</span><h2>From functions to distributions</h2><div class="stages"></div></div>
+  <p class="bigidea">Modern autoencoders replace the deterministic functions by <b>stochastic mappings</b> \(p_{\text{encoder}}(\mathbf h\mid\mathbf x)\) and \(p_{\text{decoder}}(\mathbf x\mid\mathbf h)\). That connects autoencoders to <b>latent-variable models</b> and makes them <b>generative</b>: sample a code, decode it, and you get a new plausible input.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mathbf h\sim p_{\text{encoder}}(\mathbf h\mid\mathbf x) \qquad \mathbf x'\sim p_{\text{decoder}}(\mathbf x\mid\mathbf h) \]<span class="eqno">stochastic encoder and decoder</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>A deterministic encoder answers “what is the code of x?” with one vector. A stochastic encoder answers with a <b>probability distribution</b> over codes — “probably around here”.</li>
+          <li>Likewise the decoder gives a distribution over inputs for a given code: the model can then <b>generate</b> data by sampling.</li>
+          <li>Traditionally autoencoders were used for <b>dimensionality reduction</b> and <b>feature learning</b>; the probabilistic view brought them “to the forefront of generative modeling” (variational autoencoders are the best-known example).</li>
+          <li>The deterministic autoencoder is the special case where both distributions put all their mass on one point (σ = τ = 0 in the demo).</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Stochastic mapping</dt><dd>A rule that outputs a probability distribution instead of one value.</dd>
+        <dt>\(p_{\text{encoder}}(\mathbf h\mid\mathbf x)\)</dt><dd>Probability of code h given input x.</dd>
+        <dt>\(p_{\text{decoder}}(\mathbf x\mid\mathbf h)\)</dt><dd>Probability of input x given code h.</dd>
+        <dt>Latent variable</dt><dd>A hidden quantity (here h) that the model assumes explains the observed x.</dd>
+        <dt>Generative model</dt><dd>A model that can produce new samples of x.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Data lie on a curve parameterized by s ∈ [0, 1]; the code is the position s. Input x slightly off the curve → f(x) = nearest position, say h = 0.35.</li>
+        <li>Stochastic encoder: p(h | x) = N(0.35, 0.05²). Sampling gives h′ = 0.35 + 0.05·z with z ~ N(0, 1), e.g. z = 1.2 → h′ = 0.41.</li>
+        <li>Decoder: g(0.41) = the curve point at s = 0.41; stochastic version adds N(0, τ²) noise. Forty such samples form the orange cloud of “inputs like x”.</li>
+      </ol></div>
+    </div>
+    <div data-widget="stochasticAE"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch05-4.html#/s-gen-disc">Generative vs. discriminative models (L2)</a> and <a href="ch06-1.html#/s-cost-mle">output distributions and maximum likelihood (L4)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-undercomplete" data-part="Part 1 · The idea and the bottleneck (14–14.1)" data-title="Undercomplete autoencoders" data-stages="forward,loss">
+  <div class="slide-head"><span class="kicker">14.1 · Undercomplete autoencoders</span><h2>Make the code smaller than the input</h2><div class="stages"></div></div>
+  <p class="bigidea">The simplest way to forbid perfect copying: give the code <b>fewer dimensions than the input</b>. Such an <b>undercomplete</b> autoencoder must capture the <b>most salient features</b> of the training data. Training just minimizes a reconstruction loss.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ L\big(\mathbf x,\ g(f(\mathbf x))\big) \]<span class="eqno">(14.1) — L penalizes g(f(x)) for being dissimilar from x, e.g. mean squared error</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>64 pixels in, 16 numbers in the middle, 64 pixels out. To rebuild the picture from 16 numbers, those numbers must describe the picture’s <b>main patterns</b>.</li>
+          <li>The loss L measures how different the output is from the input; with real-valued inputs the usual choice is the <b>mean squared error</b>.</li>
+          <li>Copying may “sound useless”, but we are not interested in the output — we hope that solving the copying task makes <b>h</b> take on useful properties.</li>
+          <li>In the demo, images made of bars are copied well even with a tiny code, while a diagonal stroke (never in the training set) is not: the autoencoder copies only what resembles its training data.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Undercomplete</dt><dd>Code dimension smaller than input dimension.</dd>
+        <dt>Code dimension</dt><dd>The number of numbers in h.</dd>
+        <dt>Loss function L</dt><dd>A measure of dissimilarity between x and its reconstruction.</dd>
+        <dt>Mean squared error</dt><dd>Average of (xᵢ − rᵢ)² over the components.</dd>
+        <dt>Salient features</dt><dd>The aspects of the data that explain most of the variation.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Input x has 64 pixels; code size k = 16 → compression 64/16 = 4×. The 16 numbers keep 98.7 % of the variance of the training images.</li>
+        <li>Reconstruction r; MSE = (1/64)·Σᵢ(xᵢ − rᵢ)². If 63 pixels are exact and one is off by 0.3: MSE = 0.09/64 = 0.0014 — the 72 training images score 0.0015 on average.</li>
+        <li>The diagonal stroke (never seen in training) scores 0.123 — about 80 times worse: the code has no room for diagonals, only for bars.</li>
+      </ol></div>
+    </div>
+    <div data-widget="bottleneckImages"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch05-1.html#/s-performance">Mean squared error as a performance measure (L1)</a> and <a href="ch05-1.html#/s-capacity">capacity (L1)</a>.</span></li>
+    <li><span class="tag same">Compare</span><span><a href="ch09.html#/s-prior">Convolution as a strong prior (L10)</a> — another way to restrict a model so it must capture structure.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-pca" data-part="Part 1 · The idea and the bottleneck (14–14.1)" data-title="Linear autoencoder = PCA" data-stages="loss,update">
+  <div class="slide-head"><span class="kicker">14.1 · Undercomplete autoencoders</span><h2>With a linear decoder and MSE, the autoencoder learns PCA</h2><div class="stages"></div></div>
+  <p class="bigidea">When the decoder is <b>linear</b> and L is the <b>mean squared error</b>, an undercomplete autoencoder learns to span the same subspace as <b>PCA</b>: it finds the <b>principal subspace</b> of the training data as a side effect of copying. <b>Nonlinear</b> encoders and decoders learn a more powerful, nonlinear generalization of PCA.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mathbf h = \mathbf V_k^{\top}(\mathbf x-\boldsymbol\mu),\qquad \mathbf r=\boldsymbol\mu+\mathbf V_k\mathbf h \]<span class="eqno">linear encoder and decoder (V_k = k orthonormal directions)</span>
+        \[ J=\sum_{\text{examples}}\|\mathbf x-\mathbf r\|^2 \ \text{ is minimized when } \mathbf V_k=\text{top-}k\text{ principal directions} \]<span class="eqno">PCA = the k directions of largest variance</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>With one code number and 2-D data, the decoder can only produce points on a <b>line</b>. The reconstruction of x is the closest point on that line; the error is the perpendicular distance.</li>
+          <li>Turning the line to minimize the total squared error gives the direction along which the data vary the most — the <b>first principal component</b>. Gradient descent on the copying loss finds it automatically.</li>
+          <li>If the data lie on a <b>curve</b>, no line fits well. A nonlinear encoder/decoder can use the curve itself as its 1-number code — this is what makes nonlinear autoencoders more powerful than PCA.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>PCA</dt><dd>Principal component analysis: the orthogonal directions of largest variance.</dd>
+        <dt>Principal subspace</dt><dd>The space spanned by the top-k principal directions.</dd>
+        <dt>Span</dt><dd>All points reachable as combinations of some directions.</dd>
+        <dt>Linear decoder</dt><dd>r is a linear (matrix) function of h.</dd>
+        <dt>μ</dt><dd>The mean of the training data.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Line direction u = (cos θ, sin θ). For θ = 20°: u = (0.94, 0.34).</li>
+        <li>Point x = (1.5, 0.9): code h = uᵀx = 0.94·1.5 + 0.34·0.9 = 1.72; reconstruction r = h·u = (1.62, 0.59); error ‖x − r‖² = 0.12² + 0.31² = 0.11.</li>
+        <li>Add this over all points to get J(θ); the angle with the smallest J is the PCA direction (in the demo 31.8°). Gradient descent on θ gets there by itself.</li>
+      </ol></div>
+    </div>
+    <div data-widget="pcaLine"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch04-3.html#/s-gd">Gradient descent (L3)</a>, <a href="ch04-3.html#/s-least-squares">linear least squares (L3)</a> and <a href="ch06-1.html#/s-linear-limits">the limits of linear models (L4)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-overcomplete" data-part="Part 1 · The idea and the bottleneck (14–14.1)" data-title="Too much capacity: the identity trap" data-stages="forward,loss">
+  <div class="slide-head"><span class="kicker">14.1 · Undercomplete autoencoders</span><h2>Too much capacity learns nothing</h2><div class="stages"></div></div>
+  <p class="bigidea">If encoder and decoder have <b>too much capacity</b>, the autoencoder copies without extracting anything useful. If the code is as large as the input (or larger — <b>overcomplete</b>), even a <b>linear</b> encoder and decoder can learn the identity and learn nothing about the data distribution.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \dim(\mathbf h)\ \ge\ \dim(\mathbf x)\ \Rightarrow\ g(f(\mathbf x))=\mathbf x \text{ is reachable, with } L=0 \text{ for every } \mathbf x \]<span class="eqno">the identity trap</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>A pipe as wide as the input lets <b>everything</b> through: data, but also pure noise. Zero reconstruction error on everything means the code has no opinion about what the data look like.</li>
+          <li>The warning sign is <b>no gap</b> between “copies my data” and “copies anything”. A useful autoencoder copies its data much better than random inputs.</li>
+          <li>Capacity is not only the code size: a very deep, very flexible encoder can hide a lot of information in a small code too (a one-dimensional code can in principle index every training example). Limiting capacity by hand is clumsy — the next part replaces it with regularization.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Capacity</dt><dd>How many different functions a model can represent (L1).</dd>
+        <dt>Overcomplete</dt><dd>Code dimension greater than input dimension.</dd>
+        <dt>Identity trap</dt><dd>Learning g(f(x)) = x exactly, which carries no information about the data.</dd>
+        <dt>Data distribution</dt><dd>p_data(x): which inputs are likely and which are not.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Linear autoencoder on 64-pixel images with k = 64: choose V = identity → h = x − μ, r = μ + h = x. MSE = 0 for every x, noise included.</li>
+        <li>With k = 16: MSE ≈ 0.0045 on a training image, ≈ 0.068 on pure noise. The gap (×15) shows that the code encodes the structure of bar images.</li>
+        <li>As k grows the noise error falls toward 0; the gap closes; at k = 64 nothing distinguishes data from noise.</li>
+      </ol></div>
+    </div>
+    <div data-widget="capacityTrap"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch05-1.html#/s-capacity">Capacity, overfitting and underfitting (L1)</a>.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="#/s-regularized">regularized autoencoders</a> — constrain the <i>loss</i> instead of the size.</span></li>
+  </ul></div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-regularized" data-part="Part 2 · Regularized autoencoders (14.2)" data-title="Regularized autoencoders: the menu" data-stages="loss">
+  <div class="slide-head"><span class="kicker">14.2 · Regularized autoencoders</span><h2>Constrain the loss, not the size</h2><div class="stages"></div></div>
+  <p class="bigidea">Instead of keeping the model shallow and the code small, <b>regularized autoencoders</b> use a loss that rewards <b>other properties</b> besides copying: <b>sparsity</b> of the code, <b>small derivatives</b> of the code, or <b>robustness to noise</b>. Then the model can be nonlinear and overcomplete and still learn something useful — even if it has enough capacity for the identity.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ J = \underbrace{L\big(\mathbf x,\ g(f(\mathbf x))\big)}_{\text{copy well}} \;+\; \underbrace{\Omega(\mathbf h,\mathbf x)}_{\text{…but have another property}} \]<span class="eqno">the general shape of a regularized autoencoder</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Three recipes, each of which gives the network a reason <b>not</b> to be the identity:</li>
+          <li><b>Sparse</b>: add a penalty so that only a few code units are active for each input.</li>
+          <li><b>Denoising</b>: feed a corrupted input but demand the clean one back — copying would reproduce the damage.</li>
+          <li><b>Contractive</b>: penalize how fast the code changes when the input changes a little.</li>
+          <li>All three are regularizers in the sense of L6: they trade a little training error for a representation that generalizes.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Regularized autoencoder</dt><dd>An autoencoder whose loss encourages properties beyond copying.</dd>
+        <dt>Ω</dt><dd>A penalty term added to the loss (L6 notation).</dd>
+        <dt>Sparsity</dt><dd>Most code units are exactly zero.</dd>
+        <dt>Robustness to noise</dt><dd>The output does not change much when the input is corrupted.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Plain: J = L(x, g(f(x))). With k ≥ dim x the best J is 0 — identity.</li>
+        <li>Sparse: J = L + λΣ|hᵢ|. The identity needs all units → large Ω; a sparse code with a slightly worse L can win. For λ = 0.5 and 12 units of size 1: Ω = 6, so any copying scheme with Ω &lt; 6 that loses less than 6 in L is preferred.</li>
+        <li>Denoising: J = L(x, g(f(x̃))). The identity gives L = ‖x̃ − x‖² = the noise energy (e.g. 64 × 0.1 = 6.4 for σ ≈ 0.3) — a denoiser can do much better.</li>
+      </ol></div>
+    </div>
+    <div data-widget="regMenu"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch07.html#/s-reg-what">What regularization is (L6)</a> and <a href="ch07.html#/s-norm-penalty">parameter norm penalties (L6)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-sparse" data-part="Part 2 · Regularized autoencoders (14.2)" data-title="Sparse autoencoders" data-stages="loss">
+  <div class="slide-head"><span class="kicker">14.2.1 · Sparse autoencoders</span><h2>Sparse autoencoders: few units may speak</h2><div class="stages"></div></div>
+  <p class="bigidea">A <b>sparse autoencoder</b> adds a <b>sparsity penalty</b> \(\Omega(\mathbf h)\) on the code layer to the reconstruction error. To keep the penalty small, only a few code units can be non-zero for any input — so each unit must respond to a <b>specific statistical feature</b> of the dataset instead of helping to copy everything.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ L\big(\mathbf x,\ g(f(\mathbf x))\big) + \Omega(\mathbf h) \]<span class="eqno">(14.2) — h = f(x) is the encoder output, g(h) the decoder output</span>
+        \[ \Omega(\mathbf h)=\lambda\sum_i |h_i| \]<span class="eqno">(14.3) — the L¹ penalty on the code</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Imagine 1 000 code units but only ~20 are allowed to light up per image. Each unit becomes a <b>detector</b> for something that actually occurs in the data (a bar at column 3, a curve, a texture).</li>
+          <li>The penalty is the L¹ norm of the <b>code</b>, not of the weights as in L6. Its effect is the same kind: many values become <b>exactly zero</b> (soft thresholding).</li>
+          <li>Sparse autoencoders are typically used to learn <b>features for another task</b>, such as classification.</li>
+          <li>An autoencoder regularized to be sparse must respond to the unique statistical features of its dataset rather than act as an identity function.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Sparsity penalty Ω(h)</dt><dd>A cost that grows with the number and size of non-zero code units.</dd>
+        <dt>λ</dt><dd>How strongly sparsity is enforced.</dd>
+        <dt>L¹ norm Σ|hᵢ|</dt><dd>Sum of absolute values; it pushes values to exactly 0.</dd>
+        <dt>Soft threshold</dt><dd>sign(a)·max(|a| − λ, 0): shrink by λ, cut at 0.</dd>
+        <dt>Active unit</dt><dd>A code unit whose value is not 0.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Suppose reconstruction alone wants unit values a = (1.6, −0.2, 0.9, 0.15, …). For one unit the cost is ½(a − h)² + λ|h|; its minimizer is the soft threshold.</li>
+        <li>λ = 0.5: h₁ = 1.6 − 0.5 = 1.1; h₂ = 0 (|−0.2| ≤ 0.5); h₃ = 0.4; h₄ = 0.</li>
+        <li>Ω(h) = 0.5 × (1.1 + 0.4 + …) and only the strong units stay active. Raising λ switches off more units.</li>
+      </ol></div>
+    </div>
+    <div data-widget="sparseCode"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch07.html#/s-l1">L¹ regularization and sparsity (L6)</a>.</span></li>
+    <li><span class="tag fwd">Next</span><span><a href="#/s-sparse-prior">Why this penalty: a Laplace prior on the latent variables.</a></span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-sparse-prior" data-part="Part 2 · Regularized autoencoders (14.2)" data-title="Sparsity as a prior on latent variables" data-stages="loss">
+  <div class="slide-head"><span class="kicker">14.2.1 · Sparse autoencoders</span><h2>Why sparsity: a prior on latent variables</h2><div class="stages"></div></div>
+  <p class="bigidea">The sparse autoencoder can be seen as <b>approximate maximum-likelihood training</b> of a generative model with latent variables h: the joint is \(p_{\text{model}}(\mathbf h,\mathbf x)=p_{\text{model}}(\mathbf h)\,p_{\text{model}}(\mathbf x\mid\mathbf h)\), and the <b>prior</b> \(p_{\text{model}}(\mathbf h)\) is what the sparsity penalty really is: with a Laplace prior, \(-\log p(\mathbf h)\) is exactly \(\lambda\sum_i|h_i|\) plus a constant. The features are useful because they describe the latent variables that <b>explain</b> the input.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \log p_{\text{model}}(\mathbf h,\mathbf x)=\log p_{\text{model}}(\mathbf h)+\log p_{\text{model}}(\mathbf x\mid\mathbf h) \]<span class="eqno">(14.5) — prior × likelihood</span>
+        \[ p_{\text{model}}(h_i)=\frac{\lambda}{2}e^{-\lambda|h_i|} \]<span class="eqno">(14.6) — Laplace prior on each unit</span>
+        \[ -\log p_{\text{model}}(\mathbf h)=\sum_i\Big(\lambda|h_i|-\log\frac{\lambda}{2}\Big)=\Omega(\mathbf h)+\text{const} \]<span class="eqno">(14.7–14.8)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>The <b>prior</b> p(h) is the model’s belief about codes <b>before</b> seeing x. A Laplace prior says “most code units are probably near zero”.</li>
+          <li>Maximizing log p(x | h) + log p(h) means: explain x well (reconstruction) <b>and</b> use a code the prior finds plausible (sparse). That is the MAP idea of L2 applied to the code instead of the weights.</li>
+          <li>The constant −log(λ/2) does not depend on h, so it does not change the training — only the λ|hᵢ| term matters.</li>
+          <li>A Gaussian prior would give h² instead of |h|: it shrinks units but rarely makes them exactly zero. The kink of |h| at 0 is what creates true sparsity.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Prior p(h)</dt><dd>Beliefs about the latent variables before observing x.</dd>
+        <dt>Likelihood p(x | h)</dt><dd>How probable x is given the code h (the decoder).</dd>
+        <dt>Laplace distribution</dt><dd>Density (λ/2)e^(−λ|h|): a sharp peak at 0 with heavy tails.</dd>
+        <dt>Maximum likelihood</dt><dd>Choose the model that makes the data most probable (L2).</dd>
+        <dt>Latent variables</dt><dd>Unobserved causes that explain the input.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>λ = 1.5, one unit with h = 0.8: p(h) = 0.75·e^(−1.2) = 0.226.</li>
+        <li>−log p(h) = 1.5 × 0.8 − log 0.75 = 1.2 + 0.288 = 1.488 = λ|h| + 0.288.</li>
+        <li>The 0.288 is the same for every h, so minimizing −log p(h) over h means minimizing λ|h|: the L¹ penalty.</li>
+      </ol></div>
+    </div>
+    <div data-widget="laplacePrior"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch05-4.html#/s-map">Bayesian statistics and MAP (L2)</a>, <a href="ch05-4.html#/s-mle">maximum likelihood (L2)</a> and <a href="ch07.html#/s-l2">weight decay as a Gaussian prior (L6)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-denoising" data-part="Part 2 · Regularized autoencoders (14.2)" data-title="Denoising autoencoders" data-stages="data,loss">
+  <div class="slide-head"><span class="kicker">14.2.2 · Denoising autoencoders</span><h2>Denoising autoencoders: undo the damage</h2><div class="stages"></div></div>
+  <p class="bigidea">Rather than adding a penalty, change the <b>reconstruction term</b>: feed a <b>corrupted copy</b> \(\tilde{\mathbf x}\) of the input but ask for the <b>clean</b> \(\mathbf x\) back. A <b>denoising autoencoder (DAE)</b> must therefore <b>undo the corruption</b> rather than simply copy — and to do that it must learn what clean data look like.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ L\big(\mathbf x,\ g(f(\tilde{\mathbf x}))\big) \]<span class="eqno">(14.9) — x̃ is a copy of x corrupted by some form of noise</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Show the network a smudged photo and grade it against the clean photo. The identity function gets a bad grade (it returns the smudges), so copying is no longer the best strategy.</li>
+          <li>To remove noise you must know what the signal normally looks like — bars, faces, words. So denoising training “forces f and g to implicitly learn the structure of p_data(x)”.</li>
+          <li>Another example of useful properties emerging as a <b>by-product</b> of minimizing reconstruction error.</li>
+          <li>It shows how <b>overcomplete, high-capacity</b> models can be used as autoencoders, as long as they are prevented from learning the identity.</li>
+          <li>Typical corruptions: Gaussian noise added to every pixel, or “masking” (setting a random subset of inputs to 0).</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Corruption</dt><dd>A random process C(x̃ | x) that damages x.</dd>
+        <dt>x̃ (x-tilde)</dt><dd>The corrupted copy of x that the encoder sees.</dd>
+        <dt>Masking noise</dt><dd>Setting a random fraction of the inputs to 0.</dd>
+        <dt>Gaussian noise</dt><dd>Adding N(0, σ²) to each input.</dd>
+        <dt>Denoising</dt><dd>Recovering the clean x from x̃.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Clean x (64 pixels). Corrupt with σ = 0.35 Gaussian noise (pixel values clipped to [0, 1]): ‖x̃ − x‖²/64 = 0.042 — this is what plain copying would score.</li>
+        <li>Encode x̃ with the k = 16 bar autoencoder and decode: the code can only express bar patterns, so most of the random noise is dropped: ‖g(f(x̃)) − x‖²/64 = 0.017.</li>
+        <li>Error reduced by ≈ 60 %. With k = 64 nothing is dropped: the error stays at 0.042 (identity trap).</li>
+      </ol></div>
+    </div>
+    <div data-widget="denoiseDemo"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch07.html#/s-noise">Noise robustness (L6)</a> and <a href="ch07.html#/s-augment">data augmentation (L6)</a>.</span></li>
+    <li><span class="tag fwd">Next</span><span><a href="#/s-dae-manifold">What exactly does the DAE learn?</a></span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-dae-manifold" data-part="Part 2 · Regularized autoencoders (14.2)" data-title="What a DAE learns" data-stages="loss,final">
+  <div class="slide-head"><span class="kicker">14.2.2 · Denoising autoencoders</span><h2>What a denoising autoencoder learns: pointing back to the data</h2><div class="stages"></div></div>
+  <p class="bigidea">Picture the data as living near a thin <b>manifold</b> (a curve in the demo). Corrupted inputs sit off the manifold; the DAE learns to map each of them <b>back</b> to the nearest point of the data. The difference \(r(\tilde{\mathbf x})-\tilde{\mathbf x}\) forms a <b>vector field</b> pointing toward high data density — an implicit description of \(p_{\text{data}}(\mathbf x)\).</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ g(f(\tilde{\mathbf x}))-\tilde{\mathbf x}\ \approx\ \text{direction toward the data manifold} \]<span class="eqno">the reconstruction vector field of a DAE</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Every training pair is “here is a damaged point, here is where it came from”. Averaged over many pairs, the network learns <b>where the data are</b> around every nearby location.</li>
+          <li>The arrows are only reliable <b>near</b> the data (within roughly the noise size): the DAE never saw points far away.</li>
+          <li>The DAE makes the reconstruction function resist <b>small but finite</b> perturbations of the input — exactly the size of the training noise.</li>
+          <li>This is why DAEs capture the structure of the data distribution: the field tells you how to move any point to make it “more typical”.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Manifold</dt><dd>A low-dimensional surface (here a curve) along which the data vary.</dd>
+        <dt>Vector field</dt><dd>An arrow attached to every point of the space.</dd>
+        <dt>Density p_data(x)</dt><dd>How likely each region of input space is.</dd>
+        <dt>Finite perturbation</dt><dd>A small but non-zero displacement of the input.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Clean training point x = (0.30, 0.72) on the curve; corruption ε = (0.00, +0.08) gives x̃ = (0.30, 0.80).</li>
+        <li>The target is x, so the ideal output is r(x̃) = (0.30, 0.72): r(x̃) − x̃ = (0, −0.08) — an arrow pointing straight back to the curve.</li>
+        <li>Collect this arrow for every corrupted point: a field that is zero on the curve and points toward it nearby.</li>
+      </ol></div>
+    </div>
+    <div data-widget="manifoldField"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch05-4.html#/s-smoothness">The manifold and smoothness assumptions (L2)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-contractive" data-part="Part 2 · Regularized autoencoders (14.2)" data-title="Contractive autoencoders" data-stages="loss,backward">
+  <div class="slide-head"><span class="kicker">14.2.3 · Contractive autoencoders</span><h2>Contractive autoencoders: penalize the derivatives</h2><div class="stages"></div></div>
+  <p class="bigidea">Keep the penalty Ω, but make it about <b>derivatives</b>: ask the code \(\mathbf h=f(\mathbf x)\) to change as little as possible when x changes slightly. The penalty is the <b>squared Frobenius norm of the Jacobian</b> of the encoder. Because it is applied only at training examples, the encoder learns features that capture information about the <b>training distribution</b>.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \Omega(\mathbf h,\mathbf x)=\lambda\sum_i\big\|\nabla_{\mathbf x}h_i\big\|^2 \]<span class="eqno">(14.11) — sum over code units of the squared gradient</span>
+        \[ \Omega(\mathbf h)=\lambda\left\|\frac{\partial f(\mathbf x)}{\partial\mathbf x}\right\|_F^2 \]<span class="eqno">(14.18) — the same thing written with the Jacobian matrix</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>The Jacobian ∂f/∂x is a table: entry (i, j) says how much code unit i moves when input j moves. The Frobenius norm squares and adds all entries.</li>
+          <li>Making it small means a <b>neighbourhood</b> of inputs is mapped to a <b>smaller</b> neighbourhood of codes — the space is <b>contracted</b>. Hence the name.</li>
+          <li>But the code must still differ between different training examples (to reconstruct them), so it contracts mostly in directions <b>across</b> the data manifold and keeps sensitivity <b>along</b> it.</li>
+          <li>The penalty needs the derivative ∂f/∂x inside the loss, so training needs derivatives of derivatives — back-propagation handles it.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Contractive autoencoder (CAE)</dt><dd>An autoencoder with the Jacobian penalty.</dd>
+        <dt>Jacobian ∂f/∂x</dt><dd>Matrix of all partial derivatives ∂hᵢ/∂xⱼ (L3).</dd>
+        <dt>Frobenius norm ‖·‖_F</dt><dd>Square root of the sum of squared matrix entries.</dd>
+        <dt>Infinitesimal perturbation</dt><dd>An arbitrarily small change of the input (a derivative measures the response to it).</dd>
+        <dt>Contraction</dt><dd>Mapping a neighbourhood to a smaller one.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Encoder h = tanh(Wx), W = [[1, 0.5], [−0.3, 1]], x₀ = (0.6, −0.3): Wx₀ = (0.45, −0.48), h = (0.42, −0.45).</li>
+        <li>Jacobian = diag(1 − h²)·W: row 1 = (1 − 0.18)·(1, 0.5) = (0.82, 0.41); row 2 = (1 − 0.20)·(−0.3, 1) = (−0.24, 0.80).</li>
+        <li>‖J‖²_F = 0.82² + 0.41² + 0.24² + 0.80² = 0.67 + 0.17 + 0.06 + 0.64 = 1.54; Ω = λ·1.54. A smaller gain of W, or saturating tanh, shrinks it.</li>
+      </ol></div>
+    </div>
+    <div data-widget="contractDemo"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch04-3.html#/s-jacobian-hessian">Jacobian and Hessian (L3)</a> and <a href="ch07.html#/s-noise">noise robustness (L6)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-dae-vs-cae" data-part="Part 2 · Regularized autoencoders (14.2)" data-title="Denoising vs. contractive" data-stages="loss">
+  <div class="slide-head"><span class="kicker">14.2.3 · Contractive autoencoders</span><h2>Denoising and contractive: two sides of one idea</h2><div class="stages"></div></div>
+  <p class="bigidea">In the limit of <b>small Gaussian input noise</b>, the denoising reconstruction error is equivalent to a <b>contractive penalty on the reconstruction function</b> \(\mathbf x\mapsto g(f(\mathbf x))\). Denoising autoencoders resist <b>small but finite</b> perturbations of the <b>reconstruction</b>; contractive autoencoders resist <b>infinitesimal</b> perturbations of the <b>features</b>.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mathbb E_{\epsilon\sim N(0,\sigma^2)}\big[(r(x_0+\epsilon)-x_0)^2\big] \approx \big(r(x_0)-x_0\big)^2+\sigma^2\,r'(x_0)^2 \]<span class="eqno">denoising error ≈ reconstruction error + σ² × (derivative of r)²</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Average the denoising error over small noise and expand r around the clean point: you get the usual error <b>plus</b> σ² times the squared slope of r. The noise term <b>is</b> a derivative penalty — on r = g∘f, weighted by the noise variance.</li>
+          <li>So both recipes say: near the data, the function should barely react to small input changes. DAE does it statistically with finite noise; CAE does it analytically with the Jacobian, and only for the encoder f.</li>
+          <li>Both contract the space around the data; the <b>denoising</b> one additionally learns the vector field back to the manifold.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Reconstruction function</dt><dd>The whole map x ↦ g(f(x)).</dd>
+        <dt>Feature extraction function</dt><dd>The encoder f alone.</dd>
+        <dt>𝔼[·]</dt><dd>Expected value (average) over the random noise.</dd>
+        <dt>Taylor expansion</dt><dd>r(x₀ + ε) ≈ r(x₀) + r′(x₀)ε for small ε.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Near x₀ = 0 let r(x) = b + s·x with b = 0.2 (offset) and s = 0.6 (slope). Noise ε ~ N(0, σ²), σ = 0.6.</li>
+        <li>(r(ε) − 0)² = (b + sε)² = b² + 2bsε + s²ε². Averaging: E[ε] = 0 and E[ε²] = σ², so E = b² + σ²s² = 0.04 + 0.36 × 0.36 = 0.04 + 0.13 = 0.17.</li>
+        <li>Set the slope to 0: E = b² = 0.04. The noise term vanishes only when r is flat near the data — a contraction.</li>
+      </ol></div>
+    </div>
+    <div data-widget="daeCaeCompare"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch07.html#/s-noise">Noise injection as regularization (L6)</a> and <a href="ch08-6.html#/s-taylor">second-order Taylor approximations (L9)</a>.</span></li>
+  </ul></div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-depth" data-part="Part 3 · Depth and applications (14.3–14.8)" data-title="Layer size and depth" data-stages="init,forward">
+  <div class="slide-head"><span class="kicker">14.3 · Representational power, layer size and depth</span><h2>Shallow or deep?</h2><div class="stages"></div></div>
+  <p class="bigidea">Autoencoders are often trained with a <b>single-layer</b> encoder and decoder, but <b>deep</b> ones have many advantages. One hidden layer can represent the identity along the data arbitrarily well, yet cannot easily enforce constraints such as sparsity. Experimentally, deep autoencoders yield <b>much better compression</b> than shallow or linear ones.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \text{parameters of a weight layer}=n_{\text{in}}\times n_{\text{out}}+n_{\text{out}} \]<span class="eqno">counting what each design costs</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li><b>Linear</b> (no hidden layer): only linear structure; PCA when the code is small, the identity when it is not.</li>
+          <li><b>One hidden layer</b> per side: the universal approximation theorem (L4) says it can represent almost any encoder/decoder with enough units — but “almost any” includes the identity, and asking it to also be sparse or contractive is hard.</li>
+          <li><b>Deep</b>: depth can reduce the computational cost and the amount of training data needed to represent some functions <b>exponentially</b> (L4). The same argument applies to encoders and decoders.</li>
+          <li>Deep autoencoders are often trained greedily, one shallow autoencoder at a time, then fine-tuned (pretraining, L9).</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Shallow</dt><dd>One hidden layer.</dd>
+        <dt>Deep</dt><dd>Several hidden layers in the encoder and in the decoder.</dd>
+        <dt>Universal approximation</dt><dd>One wide hidden layer can approximate any continuous function (L4).</dd>
+        <dt>Compression</dt><dd>Representing x with far fewer numbers while keeping it reconstructable.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Linear, 64 → 8 → 64: encoder 64×8 + 8 = 520, decoder 8×64 + 64 = 576 — 1 096 parameters, only linear structure.</li>
+        <li>Shallow, 64 → 32 → 8 → 32 → 64: 64·32 + 32 + 32·8 + 8 + 8·32 + 32 + 32·64 + 64 = 4 456 parameters, nonlinear.</li>
+        <li>Deep, two hidden layers of 32 per side: adds 2 × (32·32 + 32) = 2 112 → 6 568 parameters, and a much richer family of encoders for the money.</li>
+      </ol></div>
+    </div>
+    <div data-widget="depthBuilder"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch06-1.html#/s-uat">Universal approximation and depth (L4)</a> and <a href="ch08-6.html#/s-pretrain">greedy layer-wise pretraining (L9)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-applications" data-part="Part 3 · Depth and applications (14.3–14.8)" data-title="Applications: dimensionality reduction" data-stages="final">
+  <div class="slide-head"><span class="kicker">14.8 · Applications of autoencoders</span><h2>Dimensionality reduction: fewer numbers, better organized</h2><div class="stages"></div></div>
+  <p class="bigidea">Autoencoders are successfully applied to <b>dimensionality reduction</b> and <b>information retrieval</b>. A lower-dimensional representation can improve many tasks (e.g. classification): it places <b>semantically related examples near each other</b>, which helps generalization, and smaller spaces cost less <b>memory and runtime</b>.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mathbf x\in\mathbb R^{64}\ \xrightarrow{\ f\ }\ \mathbf h\in\mathbb R^{2}\qquad \text{similar } \mathbf x \Rightarrow \text{nearby } \mathbf h \]<span class="eqno">the code as a map of the dataset</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Plot every training image by its first two code numbers: the three kinds of image fall into three regions — and the autoencoder was <b>never told</b> the kinds.</li>
+          <li>A classifier that works in this 2-D space needs far fewer examples than one working on 64 raw pixels: the hints provided by the mapping aid generalization (recall the curse of dimensionality, L2).</li>
+          <li>Hinton &amp; Salakhutdinov (2006) showed a deep autoencoder producing a 2-D code of documents that separates topics much better than the equivalent PCA.</li>
+          <li>Nearest neighbours in code space are a first form of retrieval: “find me things like this”.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Dimensionality reduction</dt><dd>Mapping x to a representation with fewer numbers.</dd>
+        <dt>Semantically related</dt><dd>Similar in meaning (same kind of object), not necessarily similar pixel by pixel.</dd>
+        <dt>Nearest neighbour</dt><dd>The stored example whose code is closest to the query’s code.</dd>
+        <dt>Generalization</dt><dd>Working on new examples (L1).</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Image #11 has code h = (h₁, h₂) = (−0.17, −0.17). Image #50 has h′ = (−0.22, −0.15).</li>
+        <li>Distance ‖h − h′‖ = √(0.05² + 0.02²) = 0.05 — tiny, so #50 is its nearest neighbour, and it is indeed the same kind of image (horizontal bars).</li>
+        <li>Comparing 2 numbers instead of 64 pixels: 32× less memory and arithmetic per comparison.</li>
+      </ol></div>
+    </div>
+    <div data-widget="codeMap"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch05-4.html#/s-curse">The curse of dimensionality (L2)</a> and <a href="ch05-1.html#/s-generalization">generalization (L1)</a>.</span></li>
+    <li><span class="tag fwd">Used by</span><span><a href="ch15.html#/s-one-shot">One-shot learning in a good representation space (L13)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-retrieval" data-part="Part 3 · Depth and applications (14.3–14.8)" data-title="Information retrieval and semantic hashing" data-stages="final">
+  <div class="slide-head"><span class="kicker">14.8 · Applications of autoencoders</span><h2>Information retrieval: semantic hashing</h2><div class="stages"></div></div>
+  <p class="bigidea"><b>Information retrieval</b> = finding database entries that resemble a query. If the autoencoder produces a code that is <b>low-dimensional and binary</b>, every entry can be stored in a <b>hash table</b> keyed by its code: retrieval returns all entries with the <b>same binary code</b> as the query — no distance computations at all.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ b_j=\mathbb 1[h_j>0],\quad j=1..m \qquad \text{key}=b_1b_2\cdots b_m \]<span class="eqno">binary code from the first m code numbers (threshold at 0)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>A hash table maps a key to a bucket in constant time. If similar inputs get the same binary code, the bucket <b>is</b> the search result.</li>
+          <li>Linear search compares the query with all N entries (N distance computations). Semantic hashing: compute the code once, look up one bucket.</li>
+          <li>Slightly less similar items live in buckets whose key differs by one or two bits — flipping bits of the query key (Hamming distance search) finds them cheaply too.</li>
+          <li>In practice the final layer uses sigmoids pushed to saturate at 0 or 1, so that the code is essentially binary; this demo simply thresholds the linear code.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Information retrieval</dt><dd>Finding stored items that resemble a query.</dd>
+        <dt>Hash table</dt><dd>A data structure that jumps straight to the bucket for a key.</dd>
+        <dt>Binary code</dt><dd>A vector of 0/1 bits.</dd>
+        <dt>Semantic hashing</dt><dd>Using a learned binary code as the hash key, so that one bucket holds similar items.</dd>
+        <dt>Hamming distance</dt><dd>Number of bits in which two codes differ.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Query code (first 3 numbers): h = (0.65, −0.89, −0.82) → bits (1, 0, 0) → key “100”.</li>
+        <li>Bucket “100” holds 11 of the 72 images (the query included): returned with 1 lookup instead of 72 distance computations (each of 64 multiplications).</li>
+        <li>With m = 3 bits there are 2³ = 8 buckets of ≈ 9 images; with m = 6, up to 64 buckets of ≈ 1–2 images — more selective.</li>
+      </ol></div>
+    </div>
+    <div data-widget="hashRetrieval"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="#/s-applications">the code map of the previous slide</a> and <a href="ch06-1.html#/s-output-sigmoid">sigmoid output units (L4)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-summary" data-part="Wrap-up" data-title="Summary: how it all connects" data-stages="forward,loss,final">
+  <div class="slide-head"><span class="kicker">Wrap-up</span><h2>Summary: how it all connects</h2><div class="stages"></div></div>
+  <p class="bigidea">An autoencoder learns by <b>copying under a constraint</b>. The constraint is either a <b>small code</b> (undercomplete → PCA when linear) or a <b>regularizer</b> (sparse, denoising, contractive). Each constraint forces the code to capture the <b>structure of the data</b>, which is what we actually keep: features, a compression, a denoiser, or a hash key.</p>
+  <div class="card" style="padding:0;overflow:hidden"><div class="scroll-x"><table class="data-table">
+    <thead><tr><th>Idea</th><th>Key formula</th><th>What stops perfect copying</th><th>What you get</th></tr></thead>
+    <tbody>
+      <tr><td>Autoencoder</td><td>\(\mathbf h=f(\mathbf x),\ \mathbf r=g(\mathbf h)\)</td><td>—</td><td>a code h</td></tr>
+      <tr><td>Undercomplete</td><td>\(L(\mathbf x,g(f(\mathbf x)))\), dim h &lt; dim x</td><td>the bottleneck</td><td>most salient features; PCA if linear</td></tr>
+      <tr><td>Overcomplete, plain</td><td>dim h ≥ dim x</td><td>nothing → identity</td><td>nothing useful</td></tr>
+      <tr><td>Sparse</td><td>\(L+\lambda\sum_i|h_i|\)</td><td>few active units</td><td>feature detectors; Laplace prior on h</td></tr>
+      <tr><td>Denoising</td><td>\(L(\mathbf x,g(f(\tilde{\mathbf x})))\)</td><td>must undo corruption</td><td>a field toward the data manifold</td></tr>
+      <tr><td>Contractive</td><td>\(L+\lambda\|\partial f/\partial\mathbf x\|_F^2\)</td><td>code must not react to small changes</td><td>contracted neighbourhoods</td></tr>
+      <tr><td>DAE ↔ CAE</td><td>\(\mathbb E[(r(x+\epsilon)-x)^2]\approx(r-x)^2+\sigma^2r'^2\)</td><td>small Gaussian noise = derivative penalty on g∘f</td><td>one idea, two forms</td></tr>
+      <tr><td>Depth</td><td>deep f and g</td><td>—</td><td>exponentially cheaper, better compression</td></tr>
+      <tr><td>Applications</td><td>\(\mathbf h\) in 2-D; \(b_j=\mathbb 1[h_j>0]\)</td><td>—</td><td>dimensionality reduction, semantic hashing</td></tr>
+    </tbody>
+  </table></div></div>
+  <div class="row3" style="margin-top:16px">
+    <div class="card plain"><h3><span class="dot"></span>Remember</h3><p>An autoencoder that copies everything perfectly has learned nothing. Useful properties appear as a <b>by-product</b> of copying under a constraint.</p></div>
+    <div class="card plain"><h3><span class="dot"></span>Next lecture</h3><p>The representations learned here can be <b>reused</b> on new tasks: <a href="ch15.html">Lecture 13 — Transfer learning</a>. Or go back to the <a href="../index.html">course map</a>.</p></div>
+    <div class="card fit"><h3><span class="dot"></span>Check yourself</h3><p>Twelve quiz questions with explanations.</p><button class="btn primary" type="button" data-goto="s-quiz" style="margin-top:6px">Take the quiz →</button></div>
+  </div>
+</section>
+
+<section class="slide" id="s-quiz" data-part="Wrap-up" data-title="Check yourself (quiz)">
+  <div class="slide-head"><span class="kicker">Wrap-up</span><h2>Check yourself</h2><p class="lede">Pick an answer to see whether it is right and why.</p></div>
+  <div data-widget="quiz"></div>
+  <footer class="credits">Study notes for Deep Learning, chapter 14. Equation numbers follow Goodfellow, Bengio &amp; Courville, <em>Deep Learning</em> (MIT Press, 2016). Explanations, diagrams and demos are original.</footer>
+</section>
+
+</main>
+</body>
+</html>

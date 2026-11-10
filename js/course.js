@@ -82,6 +82,27 @@ window.COURSE = {
       question: 'How do we build networks for sequences?',
       summary: 'Unfolding computational graphs, RNN designs and teacher forcing, back-propagation through time, bidirectional and deep RNNs, long-term dependencies, echo state networks, leaky units, LSTM and GRU, gradient clipping.',
       topics: ['Unfolding', 'BPTT', 'Teacher forcing', 'Vanishing gradients', 'LSTM / GRU', 'Gradient clipping']
+    },
+    {
+      id: 'ch14', n: 12, ch: '14', color: '--s4',
+      title: 'Autoencoders',
+      question: 'What can a network learn just by copying its input?',
+      summary: 'Encoder and decoder; undercomplete codes and their link to PCA; why too much capacity learns nothing; regularized autoencoders — sparse, denoising and contractive; depth; dimensionality reduction and information retrieval with semantic hashing.',
+      topics: ['Encoder / decoder', 'Undercomplete = PCA', 'Sparse', 'Denoising', 'Contractive', 'Semantic hashing']
+    },
+    {
+      id: 'ch15', n: 13, ch: '15', color: '--s3',
+      title: 'Transfer Learning & Domain Adaptation',
+      question: 'How can what was learned on one problem help with another?',
+      summary: 'Transfer learning, domain adaptation and concept drift as forms of multitask learning; which layers to share; generalizing from very few examples; one-shot and zero-shot learning; linking representations across languages.',
+      topics: ['Transfer vs. adaptation', 'Shared features', 'Multitask', 'One-shot', 'Zero-shot', 'Linking two spaces']
+    },
+    {
+      id: 'attn', n: 14, ch: 'supplement', chLabel: 'Supplementary slides', color: '--s2',
+      title: 'Self-Attention',
+      question: 'How can every token look at every other token at once?',
+      summary: 'From CNNs and RNNs to pairwise query–key–value interactions: token embeddings, the three projections, QKᵀ scores, softmax weights and the weighted sum of values; shapes and cost; CNN vs. RNN vs. self-attention; why position must be added.',
+      topics: ['Query / key / value', 'QKᵀ scores', 'Softmax weights', 'Weighted sum', 'Cost O(n²d)', 'CNN vs RNN vs attention']
     }
   ]
 };

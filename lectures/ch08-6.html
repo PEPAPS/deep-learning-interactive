@@ -10,14 +10,14 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
-<link rel="stylesheet" href="../css/style.css?v=18">
+<link rel="stylesheet" href="../css/style.css?v=19">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
-<script defer src="../js/core.js?v=18"></script>
-<script defer src="../js/course.js?v=18"></script>
-<script defer src="../js/quiz.js?v=18"></script>
-<script defer src="../js/lectures/ch08-6a.js?v=18"></script>
-<script defer src="../js/lectures/ch08-6b.js?v=18"></script>
+<script defer src="../js/core.js?v=19"></script>
+<script defer src="../js/course.js?v=19"></script>
+<script defer src="../js/quiz.js?v=19"></script>
+<script defer src="../js/lectures/ch08-6a.js?v=19"></script>
+<script defer src="../js/lectures/ch08-6b.js?v=19"></script>
 </head>
 <body data-page="lecture" data-lecture="ch08-6">
 <script>
@@ -334,6 +334,10 @@ window.TOPICS = {
     </div>
     <div data-widget="newtonCost"></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="#/s-newton">Newton's method (this lecture)</a>.</span></li>
+    <li><span class="tag fwd">Used by</span><span><a href="#/s-cg">conjugate gradients (this lecture)</a>.</span></li>
+  </ul></div>
 </section>
 
 <!-- ============================================================ -->
@@ -453,6 +457,10 @@ window.TOPICS = {
     </div>
     <div data-widget="playground" data-preset="ncg" data-title="CG on a curvy (non-quadratic) valley" data-sub="Try both β formulas and the reset option. The banana valley is a classic hard test for optimizers."></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="#/s-cg">conjugate gradients (this lecture)</a>.</span></li>
+    <li><span class="tag fwd">Used by</span><span><a href="#/s-bfgs">BFGS (this lecture)</a>.</span></li>
+  </ul></div>
 </section>
 
 <!-- ============================================================ -->
@@ -551,6 +559,10 @@ window.TOPICS = {
     </div>
     <div data-widget="playground" data-preset="lbfgs" data-title="BFGS vs. L-BFGS" data-sub="With a rough line search, more memory helps: m = 1 needs about 28 steps, m = 2 about 19, close to full BFGS (18). Now switch to an <b>exact</b> line search: L-BFGS matches BFGS step for step, because its directions become conjugate, as the lecture says."></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="#/s-bfgs">BFGS (this lecture)</a>.</span></li>
+    <li><span class="tag fwd">Used by</span><span><a href="#/s-race">the optimizer race (this lecture)</a>.</span></li>
+  </ul></div>
 </section>
 
 <!-- ============================================================ -->
@@ -609,6 +621,9 @@ window.TOPICS = {
     <div class="card"><h3><span class="dot"></span>Continuation methods</h3><p>Change the <b>objective</b>: solve a blurred, easy version first and sharpen it gradually.</p><button class="btn" type="button" data-goto="s-continuation">Go →</button></div>
     <div class="card"><h3><span class="dot"></span>Curriculum learning</h3><p>Change the <b>data order</b>: easy examples first, hard ones gradually.</p><button class="btn" type="button" data-goto="s-curriculum">Go →</button></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag fwd">Used by</span><span><a href="#/s-bn-problem">batch normalization (this lecture)</a>, <a href="#/s-polyak">Polyak averaging (this lecture)</a>, <a href="#/s-pretrain">pretraining (this lecture)</a>, <a href="#/s-continuation">continuation and curriculum (this lecture)</a>.</span></li>
+  </ul></div>
 </section>
 
 <!-- ============================================================ -->
@@ -774,6 +789,10 @@ window.TOPICS = {
     </div>
     <div data-widget="runningStats"></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="#/s-bn-how">how batch normalization works (this lecture)</a>.</span></li>
+    <li><span class="tag fwd">Used by</span><span><a href="ch15.html#/s-domain-adapt">input statistics that shift between domains (L13)</a>.</span></li>
+  </ul></div>
 </section>
 
 <!-- ============================================================ -->
@@ -1088,6 +1107,10 @@ window.TOPICS = {
     </div>
     <div data-widget="continuation" data-presets="hole,negsq,wiggly" data-title="Try the failure cases" data-sub="Choose a loss function, then run continuation and plain gradient descent from the same start."></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="#/s-continuation">continuation methods (this lecture)</a>.</span></li>
+    <li><span class="tag fwd">Used by</span><span><a href="#/s-curriculum">curriculum learning (this lecture)</a>.</span></li>
+  </ul></div>
 </section>
 
 <!-- ============================================================ -->

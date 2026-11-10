@@ -4,18 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Deep Learning Course Notes</title>
-<meta name="description" content="Interactive study notes for a Deep Learning course: 11 lectures from machine-learning basics to CNNs and RNNs, with every term, formula and calculation explained, live demos, and a map of how everything connects in the training loop.">
+<meta name="description" content="Interactive study notes for a Deep Learning course: 14 lectures from machine-learning basics to CNNs, RNNs, autoencoders, transfer learning and self-attention, with every term, formula and calculation explained, live demos, and a map of how everything connects in the training loop.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232a78d6'/%3E%3Cpath d='M6 9c5 0 6 14 10 14s5-14 10-14' fill='none' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
-<link rel="stylesheet" href="css/style.css?v=18">
+<link rel="stylesheet" href="css/style.css?v=19">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
-<script defer src="js/core.js?v=18"></script>
-<script defer src="js/course.js?v=18"></script>
-<script defer src="js/concepts.js?v=18"></script>
+<script defer src="js/core.js?v=19"></script>
+<script defer src="js/course.js?v=19"></script>
+<script defer src="js/concepts.js?v=19"></script>
 </head>
 <body data-page="hub">
 <main class="hub">
@@ -23,15 +23,22 @@
   <section class="hero">
     <span class="kicker">Deep Learning · interactive course notes</span>
     <h1>Deep learning, explained and connected</h1>
-    <p class="lede">Eleven lectures — from “what is learning?” to convolutional and recurrent networks — rebuilt as interactive slides. Every slide explains its <b>terms</b>, works through its <b>formulas with real numbers</b>, lets you <b>play with a live demo</b>, and shows <b>how it connects</b> to the rest of the course and to the training loop.</p>
+    <p class="lede">Fourteen lectures — from “what is learning?” to convolutional and recurrent networks, autoencoders, transfer learning and self-attention — rebuilt as interactive slides. Every slide explains its <b>terms</b>, works through its <b>formulas with real numbers</b>, lets you <b>play with a live demo</b>, and shows <b>how it connects</b> to the rest of the course and to the training loop.</p>
     <div class="hero-stats">
-      <span class="pill">11 lectures</span><span class="pill">191 slides</span><span class="pill">130+ live demos</span><span class="pill">a quiz for every lecture</span><span class="pill">light &amp; dark mode</span>
+      <span class="pill">14 lectures</span><span class="pill">237 slides</span><span class="pill">165+ live demos</span><span class="pill">a quiz for every lecture</span><span class="pill">light &amp; dark mode</span>
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:18px">
       <a class="btn primary" href="lectures/ch05-1.html">Start with Lecture 1 →</a>
+      <a class="btn" href="#primer">New here? Twelve words to know</a>
       <a class="btn" href="#loop">See the training loop</a>
       <a class="btn" href="#concepts">Explore the concepts</a>
     </div>
+  </section>
+
+  <section id="primer">
+    <h2>New to deep learning? Twelve words to know</h2>
+    <span class="note">Every lecture uses these words. Read them once here — each card links to the slide where the idea is explained with a live demo.</span>
+    <div data-widget="primer"></div>
   </section>
 
   <section>
@@ -58,7 +65,7 @@
 
   <section id="concepts">
     <h2>How the ideas connect</h2>
-    <span class="note">61 key concepts, each linked to the slide that explains it, with what it builds on and what builds on it.</span>
+    <span class="note">77 key concepts, each linked to the slide that explains it, with what it builds on and what builds on it.</span>
     <div data-widget="concepts"></div>
   </section>
 

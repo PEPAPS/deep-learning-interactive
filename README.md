@@ -1,6 +1,6 @@
 # Deep Learning — interactive course notes
 
-Interactive study notes for a Deep Learning course: **11 lectures, 191 slides, 130+ live demos**, from machine-learning basics to convolutional and recurrent networks.
+Interactive study notes for a Deep Learning course: **14 lectures, 237 slides, 165+ live demos**, from machine-learning basics to convolutional and recurrent networks, autoencoders, transfer learning and self-attention.
 
 Every slide has the same parts:
 
@@ -18,7 +18,7 @@ The home page (`index.html`) connects the whole course:
 
 - a course-wide training-loop map;
 - the "story" of how each lecture leads to the next;
-- a concept explorer with 61 concepts, showing what each builds on and what uses it;
+- a concept explorer with 77 concepts, showing what each builds on and what uses it;
 - cards for every lecture.
 
 ## Lectures
@@ -36,6 +36,9 @@ The home page (`index.html`) connects the whole course:
 | 9 | 8.6–8.7 | Optimization III: Newton, CG, BFGS, L-BFGS, batch norm, Polyak averaging, pretraining, continuation |
 | 10 | 9 | Convolutional networks: convolution, sharing, equivariance, pooling, stride/padding, gradients |
 | 11 | 10 | Recurrent networks: unfolding, BPTT, teacher forcing, bidirectional/deep/recursive nets, LSTM, GRU, clipping |
+| 12 | 14 | Autoencoders: encoder/decoder, undercomplete codes and PCA, the identity trap, sparse / denoising / contractive autoencoders, depth, dimensionality reduction, semantic hashing |
+| 13 | 15.2 | Transfer learning & domain adaptation: shared factors, which layers to share, domain shift, concept drift, multitask learning, one-shot and zero-shot learning, linking two representation spaces |
+| 14 | supplement | Self-attention: path length, token embeddings, query/key/value, QKᵀ scores, softmax weights, weighted sum, cost per layer, CNN vs RNN vs self-attention, position encoding |
 
 ## Files
 

@@ -5,14 +5,14 @@
 
 /* Course-wide training-loop map: every stage → the lecture slides that change it. */
 window.TOPICS = {
-  data: [['lectures/ch05-1.html#/s-experience', 'L1 · Experience: the dataset'], ['lectures/ch05-1.html#/s-hyper', 'L1 · Train / validation / test split'], ['lectures/ch07.html#/s-augment', 'L6 · Data augmentation'], ['lectures/ch09.html#/s-data-types', 'L10 · Grid data and channels'], ['lectures/ch10.html#/s-seq', 'L11 · Sequences']],
-  init: [['lectures/ch06-1.html#/s-arch', 'L4 · Choose the architecture'], ['lectures/ch08-3.html#/s-init-scale', 'L8 · Initialization scale'], ['lectures/ch08-3.html#/s-init-bias', 'L8 · Bias initialization'], ['lectures/ch08-6.html#/s-pretrain', 'L9 · Pretraining'], ['lectures/ch09.html#/s-cnn-arch', 'L10 · CNN layers'], ['lectures/ch10.html#/s-esn', 'L11 · Echo state networks']],
+  data: [['lectures/ch05-1.html#/s-experience', 'L1 · Experience: the dataset'], ['lectures/ch05-1.html#/s-hyper', 'L1 · Train / validation / test split'], ['lectures/ch07.html#/s-augment', 'L6 · Data augmentation'], ['lectures/ch09.html#/s-data-types', 'L10 · Grid data and channels'], ['lectures/ch10.html#/s-seq', 'L11 · Sequences'], ['lectures/ch14.html#/s-what', 'L12 · Unlabeled data: x is its own target'], ['lectures/ch15.html#/s-what', 'L13 · Two settings: P₁ and P₂'], ['lectures/attn.html#/s-embedding', 'L14 · Tokens become vectors']],
+  init: [['lectures/ch06-1.html#/s-arch', 'L4 · Choose the architecture'], ['lectures/ch08-3.html#/s-init-scale', 'L8 · Initialization scale'], ['lectures/ch08-3.html#/s-init-bias', 'L8 · Bias initialization'], ['lectures/ch08-6.html#/s-pretrain', 'L9 · Pretraining'], ['lectures/ch09.html#/s-cnn-arch', 'L10 · CNN layers'], ['lectures/ch10.html#/s-esn', 'L11 · Echo state networks'], ['lectures/ch15.html#/s-share-upper', 'L13 · Reuse layers from another task'], ['lectures/attn.html#/s-qkv', 'L14 · Three projection matrices']],
   batch: [['lectures/ch04-3.html#/s-sgd', 'L3 · Stochastic gradient descent'], ['lectures/ch08-1.html#/s-minibatch', 'L7 · Minibatch size and noise'], ['lectures/ch08-6.html#/s-curriculum', 'L9 · Curriculum learning']],
-  forward: [['lectures/ch06-1.html#/s-ffn', 'L4 · Feedforward networks'], ['lectures/ch06-1.html#/s-hidden', 'L4 · Hidden units'], ['lectures/ch07.html#/s-dropout', 'L6 · Dropout'], ['lectures/ch08-6.html#/s-bn-how', 'L9 · Batch normalization'], ['lectures/ch09.html#/s-conv2d', 'L10 · Convolution'], ['lectures/ch09.html#/s-pooling', 'L10 · Pooling'], ['lectures/ch10.html#/s-forward', 'L11 · RNN forward pass'], ['lectures/ch10.html#/s-lstm', 'L11 · LSTM']],
-  loss: [['lectures/ch05-1.html#/s-performance', 'L1 · Performance measure (MSE)'], ['lectures/ch05-4.html#/s-mle', 'L2 · Maximum likelihood'], ['lectures/ch06-1.html#/s-cost-mle', 'L4 · Cross-entropy cost'], ['lectures/ch07.html#/s-l2', 'L6 · Weight-decay penalty'], ['lectures/ch08-1.html#/s-surrogate', 'L7 · Surrogate loss'], ['lectures/ch10.html#/s-teacher', 'L11 · Teacher forcing']],
-  backward: [['lectures/ch06-5.html#/s-mlp-backprop', 'L5 · Back-propagation'], ['lectures/ch04-3.html#/s-jacobian-hessian', 'L3 · Jacobian and Hessian'], ['lectures/ch09.html#/s-conv-grad', 'L10 · Gradients of convolution'], ['lectures/ch10.html#/s-bptt', 'L11 · Back-propagation through time'], ['lectures/ch10.html#/s-longterm', 'L11 · Vanishing / exploding gradients']],
-  update: [['lectures/ch04-3.html#/s-gd', 'L3 · Gradient descent'], ['lectures/ch08-1.html#/s-illcond', 'L7 · Ill-conditioning'], ['lectures/ch08-3.html#/s-momentum', 'L8 · Momentum'], ['lectures/ch08-3.html#/s-adam', 'L8 · Adam'], ['lectures/ch08-6.html#/s-newton', 'L9 · Newton, CG, BFGS'], ['lectures/ch10.html#/s-clip', 'L11 · Gradient clipping']],
-  final: [['lectures/ch05-1.html#/s-generalization', 'L1 · Generalization'], ['lectures/ch05-1.html#/s-cv', 'L1 · Cross-validation'], ['lectures/ch05-4.html#/s-bias-variance', 'L2 · Bias–variance trade-off'], ['lectures/ch07.html#/s-early-stop', 'L6 · Early stopping'], ['lectures/ch08-6.html#/s-polyak', 'L9 · Polyak averaging']]
+  forward: [['lectures/ch06-1.html#/s-ffn', 'L4 · Feedforward networks'], ['lectures/ch06-1.html#/s-hidden', 'L4 · Hidden units'], ['lectures/ch07.html#/s-dropout', 'L6 · Dropout'], ['lectures/ch08-6.html#/s-bn-how', 'L9 · Batch normalization'], ['lectures/ch09.html#/s-conv2d', 'L10 · Convolution'], ['lectures/ch09.html#/s-pooling', 'L10 · Pooling'], ['lectures/ch10.html#/s-forward', 'L11 · RNN forward pass'], ['lectures/ch10.html#/s-lstm', 'L11 · LSTM'], ['lectures/ch14.html#/s-what', 'L12 · Encoder → code → decoder'], ['lectures/ch15.html#/s-multitask', 'L13 · Shared trunk, task heads'], ['lectures/attn.html#/s-playground', 'L14 · Self-attention layer']],
+  loss: [['lectures/ch05-1.html#/s-performance', 'L1 · Performance measure (MSE)'], ['lectures/ch05-4.html#/s-mle', 'L2 · Maximum likelihood'], ['lectures/ch06-1.html#/s-cost-mle', 'L4 · Cross-entropy cost'], ['lectures/ch07.html#/s-l2', 'L6 · Weight-decay penalty'], ['lectures/ch08-1.html#/s-surrogate', 'L7 · Surrogate loss'], ['lectures/ch10.html#/s-teacher', 'L11 · Teacher forcing'], ['lectures/ch14.html#/s-undercomplete', 'L12 · Reconstruction loss'], ['lectures/ch14.html#/s-sparse', 'L12 · Sparsity penalty'], ['lectures/ch14.html#/s-denoising', 'L12 · Denoising loss'], ['lectures/ch15.html#/s-multitask', 'L13 · Sum of task losses']],
+  backward: [['lectures/ch06-5.html#/s-mlp-backprop', 'L5 · Back-propagation'], ['lectures/ch04-3.html#/s-jacobian-hessian', 'L3 · Jacobian and Hessian'], ['lectures/ch09.html#/s-conv-grad', 'L10 · Gradients of convolution'], ['lectures/ch10.html#/s-bptt', 'L11 · Back-propagation through time'], ['lectures/ch10.html#/s-longterm', 'L11 · Vanishing / exploding gradients'], ['lectures/ch14.html#/s-contractive', 'L12 · Jacobian penalty'], ['lectures/attn.html#/s-why', 'L14 · Short gradient paths']],
+  update: [['lectures/ch04-3.html#/s-gd', 'L3 · Gradient descent'], ['lectures/ch08-1.html#/s-illcond', 'L7 · Ill-conditioning'], ['lectures/ch08-3.html#/s-momentum', 'L8 · Momentum'], ['lectures/ch08-3.html#/s-adam', 'L8 · Adam'], ['lectures/ch08-6.html#/s-newton', 'L9 · Newton, CG, BFGS'], ['lectures/ch10.html#/s-clip', 'L11 · Gradient clipping'], ['lectures/ch14.html#/s-pca', 'L12 · Gradient descent finds PCA']],
+  final: [['lectures/ch05-1.html#/s-generalization', 'L1 · Generalization'], ['lectures/ch05-1.html#/s-cv', 'L1 · Cross-validation'], ['lectures/ch05-4.html#/s-bias-variance', 'L2 · Bias–variance trade-off'], ['lectures/ch07.html#/s-early-stop', 'L6 · Early stopping'], ['lectures/ch08-6.html#/s-polyak', 'L9 · Polyak averaging'], ['lectures/ch14.html#/s-applications', 'L12 · Use the code: dimensionality reduction'], ['lectures/ch15.html#/s-shared-features', 'L13 · Generalize from few examples'], ['lectures/ch15.html#/s-one-shot', 'L13 · One-shot and zero-shot'], ['lectures/attn.html#/s-cost', 'L14 · Cost and path length']]
 };
 
 /* How each lecture hands over to the next one. */
@@ -27,7 +27,10 @@ const STORY = {
   'ch08-3': 'First-order methods are the workhorse. Can <b>curvature</b> and other strategies help even more?',
   'ch08-6': 'We can train deep MLPs well. Now we <b>specialize</b> the architecture for images and grids.',
   'ch09': 'Convolution shares weights across space. For <b>sequences</b>, we share them across time.',
-  'ch10': 'You have the whole toolbox: data → model → loss → gradients → updates → evaluation. Use the concept explorer below to review how it fits together.'
+  'ch10': 'Supervised networks need labels. Can a network learn something useful from the inputs <b>alone</b>?',
+  'ch14': 'Copying under a constraint produces a <b>representation</b>. Can a representation learned on one problem be <b>reused</b> on another?',
+  'ch15': 'Representations transfer when the underlying factors are shared. One last building block: a layer where <b>every token can look at every other token</b>.',
+  'attn': 'You have the whole toolbox: data → model → loss → gradients → updates → evaluation, plus representations that can be learned without labels, transferred, and built with attention. Use the concept explorer below to review how it fits together.'
 };
 
 /* Concept map: every concept points to the slide that explains it and lists what it builds on. */
@@ -99,7 +102,26 @@ const CONCEPTS = [
   { id: 'teacher', g: 'Sequence models', name: 'Teacher forcing', lec: 'ch10', s: 's-teacher', def: 'Feed the true previous output during training.', needs: ['rnn', 'mle'] },
   { id: 'longterm', g: 'Sequence models', name: 'Long-term dependencies', lec: 'ch10', s: 's-longterm', def: 'Products of many Jacobians vanish or explode.', needs: ['bptt', 'init'] },
   { id: 'lstm', g: 'Sequence models', name: 'LSTM & GRU', lec: 'ch10', s: 's-lstm', def: 'Gated self-loops let information and gradients survive many steps.', needs: ['longterm'] },
-  { id: 'clip', g: 'Sequence models', name: 'Gradient clipping', lec: 'ch10', s: 's-clip', def: 'Rescale gradients whose norm exceeds a threshold.', needs: ['cliffs', 'bptt'] }
+  { id: 'clip', g: 'Sequence models', name: 'Gradient clipping', lec: 'ch10', s: 's-clip', def: 'Rescale gradients whose norm exceeds a threshold.', needs: ['cliffs', 'bptt'] },
+
+  { id: 'autoencoder', g: 'Autoencoders', name: 'Autoencoder: encoder, code, decoder', lec: 'ch14', s: 's-what', def: 'A network trained to copy its input through a code — built so that it cannot copy perfectly.', needs: ['mlp', 'backprop'] },
+  { id: 'undercomplete', g: 'Autoencoders', name: 'Undercomplete autoencoder & PCA', lec: 'ch14', s: 's-pca', def: 'A code smaller than the input; with a linear decoder and MSE it learns the principal subspace.', needs: ['autoencoder', 'mse', 'capacity'] },
+  { id: 'sparse-ae', g: 'Autoencoders', name: 'Sparse autoencoder', lec: 'ch14', s: 's-sparse', def: 'Add λΣ|hᵢ| to the loss: few code units may be active; the penalty is a Laplace prior on the code.', needs: ['autoencoder', 'l1', 'map'] },
+  { id: 'dae', g: 'Autoencoders', name: 'Denoising autoencoder', lec: 'ch14', s: 's-denoising', def: 'Reconstruct the clean x from a corrupted x̃; learns a vector field pointing to the data manifold.', needs: ['autoencoder', 'augment'] },
+  { id: 'cae', g: 'Autoencoders', name: 'Contractive autoencoder', lec: 'ch14', s: 's-contractive', def: 'Penalize ‖∂f/∂x‖²_F so the code barely reacts to small input changes; equivalent to denoising with small noise.', needs: ['autoencoder', 'hessian', 'dae'] },
+  { id: 'semantic-hash', g: 'Autoencoders', name: 'Dimensionality reduction & semantic hashing', lec: 'ch14', s: 's-retrieval', def: 'Use the code to organize, compress and retrieve data; binary codes become hash-table keys.', needs: ['undercomplete', 'curse'] },
+
+  { id: 'transfer', g: 'Transfer learning', name: 'Transfer learning & domain adaptation', lec: 'ch15', s: 's-what', def: 'Exploit what was learned on P₁ to generalize on P₂; works when the factors of variation are shared.', needs: ['generalization', 'autoencoder'] },
+  { id: 'share-layers', g: 'Transfer learning', name: 'Which layers to share', lec: 'ch15', s: 's-share-upper', def: 'Share lower layers when the inputs are alike, upper layers when the outputs are alike.', needs: ['transfer', 'mlp'] },
+  { id: 'multitask', g: 'Transfer learning', name: 'Multitask learning & concept drift', lec: 'ch15', s: 's-multitask', def: 'One shared representation benefits from the data of several tasks — or of several points in time.', needs: ['transfer', 'sharing'] },
+  { id: 'few-shot', g: 'Transfer learning', name: 'One-shot & zero-shot learning', lec: 'ch15', s: 's-one-shot', def: 'A clean representation needs one labeled example per class — or none, if descriptions are available.', needs: ['transfer', 'semantic-hash'] },
+  { id: 'space-link', g: 'Transfer learning', name: 'Linking two representation spaces', lec: 'ch15', s: 's-translation', def: 'Learn a map between the word spaces of two languages from a few matched pairs.', needs: ['transfer', 'linreg'] },
+
+  { id: 'path-length', g: 'Self-attention', name: 'Path length & parallelism', lec: 'attn', s: 's-why', def: 'RNN: n steps; CNN: log layers; self-attention: one step between any two positions, all pairs at once.', needs: ['rnn', 'sharing', 'longterm'] },
+  { id: 'qkv', g: 'Self-attention', name: 'Query, key, value', lec: 'attn', s: 's-qkv', def: 'Three projections of each token: what it seeks, what it offers, what it gives.', needs: ['mlp', 'path-length'] },
+  { id: 'attention', g: 'Self-attention', name: 'Scaled dot-product attention', lec: 'attn', s: 's-playground', def: 'softmax(QKᵀ/√d_k)V: score every pair, turn scores into weights, mix the values.', needs: ['qkv', 'output-units'] },
+  { id: 'attn-cost', g: 'Self-attention', name: 'Cost O(n²d) & the comparison table', lec: 'attn', s: 's-compare', def: 'Quadratic in the sequence length, O(1) sequential operations; needs massive datasets.', needs: ['attention', 'strong-prior', 'nfl'] },
+  { id: 'position', g: 'Self-attention', name: 'Permutation equivariance & position encoding', lec: 'attn', s: 's-position', def: 'Attention ignores word order; add a position vector to each token embedding.', needs: ['attention', 'sharing'] }
 ];
 
 const lecById = id => Course.list().find(l => l.id === id);
@@ -109,12 +131,39 @@ Widgets.lectureCards = (el) => {
   el.classList.remove('widget');
   const grid = h('div', { class: 'lec-grid' });
   Course.list().forEach(l => grid.append(h('a', { class: 'lec-card', href: Course.href(l), style: `--c:var(${l.color})` },
-    h('span', { class: 'num' }, `Lecture ${l.n} · Chapter ${l.ch}`),
+    h('span', { class: 'num' }, `Lecture ${l.n} · ${l.chLabel || 'Chapter ' + l.ch}`),
     h('h3', {}, l.title),
     h('p', {}, h('i', {}, l.question)),
     h('p', {}, l.summary),
     h('div', { class: 'pills' }, l.topics.map(t => h('span', { class: 'pill' }, t))),
     h('span', { class: 'open' }, 'Open the interactive slides →'))));
+  el.append(grid);
+  return {};
+};
+
+/* ---------- beginner primer: twelve words ---------- */
+const PRIMER = [
+  { t: 'Model', d: 'A function with adjustable knobs that turns an input (a photo, a sentence) into an output (a label, a number). A neural network is one kind of model.', l: 'lectures/ch06-1.html#/s-ffn' },
+  { t: 'Parameters (weights)', d: 'The knobs. Training means turning them until the outputs are good. A big network has millions of them.', l: 'lectures/ch05-1.html#/s-linreg' },
+  { t: 'Training data & labels', d: 'The examples the model learns from. In supervised learning each example comes with the right answer — its label.', l: 'lectures/ch05-1.html#/s-experience' },
+  { t: 'Loss', d: 'One number that says how wrong the model currently is on the training examples. Training tries to make it as small as possible.', l: 'lectures/ch05-1.html#/s-performance' },
+  { t: 'Gradient', d: 'For every knob: which way, and how much, to turn it to reduce the loss. Back-propagation computes all of them at once.', l: 'lectures/ch04-3.html#/s-gd' },
+  { t: 'Learning rate', d: 'How big a step to take in the direction the gradient suggests. Too small: slow. Too big: training jumps around or explodes.', l: 'lectures/ch08-3.html#/s-sgd' },
+  { t: 'Minibatch & epoch', d: 'A minibatch is a small random handful of examples used for one update; an epoch is one full pass over the training set.', l: 'lectures/ch08-1.html#/s-minibatch' },
+  { t: 'Layer & activation', d: 'A layer multiplies its input by weights, then applies a simple non-linear function (the activation, e.g. ReLU). Stacking layers makes the network deep.', l: 'lectures/ch06-1.html#/s-hidden' },
+  { t: 'Overfitting', d: 'Doing great on the training examples but badly on new ones — the model memorized instead of learning. Regularization fights it.', l: 'lectures/ch05-1.html#/s-capacity' },
+  { t: 'Validation & test set', d: 'Examples kept aside and never trained on, used to check whether the model really works on new data.', l: 'lectures/ch05-1.html#/s-hyper' },
+  { t: 'Representation (features)', d: 'What the network computes inside: a vector describing the input in a way that makes the task easy. Autoencoders learn one; transfer learning reuses one.', l: 'lectures/ch14.html#/s-what' },
+  { t: 'Architecture', d: 'The shape of the network: fully connected (MLP), convolutional (images), recurrent (sequences), or attention (every token looks at every other).', l: 'lectures/ch09.html#/s-cnn-arch' }
+];
+Widgets.primer = (el) => {
+  el.classList.remove('widget');
+  const grid = h('div', { class: 'lec-grid' });
+  PRIMER.forEach((p, i) => grid.append(h('a', { class: 'lec-card', href: p.l, style: '--c:var(--s3)' },
+    h('span', { class: 'num' }, 'word ' + (i + 1) + ' of 12'),
+    h('h3', {}, p.t),
+    h('p', {}, p.d),
+    h('span', { class: 'open' }, 'See it explained and demonstrated →'))));
   el.append(grid);
   return {};
 };

@@ -10,14 +10,14 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
-<link rel="stylesheet" href="../css/style.css?v=18">
+<link rel="stylesheet" href="../css/style.css?v=19">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
-<script defer src="../js/core.js?v=18"></script>
-<script defer src="../js/course.js?v=18"></script>
-<script defer src="../js/quiz.js?v=18"></script>
-<script defer src="../js/lectures/ch08-6a.js?v=18"></script>
-<script defer src="../js/lectures/ch08-3.js?v=18"></script>
+<script defer src="../js/core.js?v=19"></script>
+<script defer src="../js/course.js?v=19"></script>
+<script defer src="../js/quiz.js?v=19"></script>
+<script defer src="../js/lectures/ch08-6a.js?v=19"></script>
+<script defer src="../js/lectures/ch08-3.js?v=19"></script>
 </head>
 <body data-page="lecture" data-lecture="ch08-3">
 <script>
@@ -167,6 +167,10 @@ window.TOPICS = {
     </div>
     <div data-widget="dragDemo"></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="#/s-momentum">momentum (this lecture)</a>.</span></li>
+    <li><span class="tag fwd">Used by</span><span><a href="#/s-nesterov">Nesterov momentum (this lecture)</a>.</span></li>
+  </ul></div>
 </section>
 
 <section class="slide" id="s-nesterov" data-part="Part 1 · Update rules (8.3, 8.5)" data-title="Nesterov momentum" data-stages="update">
@@ -198,6 +202,10 @@ window.TOPICS = {
     </div>
     <div data-widget="playground" data-preset="nest" data-title="Momentum vs. Nesterov momentum" data-sub="Same ε = 0.08 and α = 0.8 for both. Turn on plain gradient descent to compare, and raise α to 0.95 to see who overshoots less."></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="#/s-momentum">momentum (this lecture)</a>.</span></li>
+    <li><span class="tag fwd">Used by</span><span><a href="#/s-choose">choosing an optimizer (this lecture)</a>.</span></li>
+  </ul></div>
 </section>
 
 <section class="slide" id="s-adaptive" data-part="Part 1 · Update rules (8.3, 8.5)" data-title="Adaptive learning rates" data-stages="update">
@@ -225,6 +233,10 @@ window.TOPICS = {
     </div>
     <div data-widget="playground" data-preset="adapt" data-title="Gradient descent vs. adaptive methods" data-sub="Start on the axis-aligned valley, then switch to the rotated bowl, where the per-axis assumption is weaker."></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch08-1.html#/s-illcond">ill-conditioning (L7)</a>.</span></li>
+    <li><span class="tag fwd">Used by</span><span><a href="#/s-adagrad">AdaGrad (this lecture)</a>.</span></li>
+  </ul></div>
 </section>
 
 <section class="slide" id="s-adagrad" data-part="Part 1 · Update rules (8.3, 8.5)" data-title="AdaGrad" data-stages="update">
@@ -255,6 +267,10 @@ window.TOPICS = {
     </div>
     <div data-widget="adagradDecay"></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="#/s-adaptive">why adapt the learning rate per parameter (this lecture)</a>.</span></li>
+    <li><span class="tag fwd">Used by</span><span><a href="#/s-rmsprop">RMSProp (this lecture)</a>.</span></li>
+  </ul></div>
 </section>
 
 <section class="slide" id="s-rmsprop" data-part="Part 1 · Update rules (8.3, 8.5)" data-title="RMSProp" data-stages="update">
@@ -286,6 +302,10 @@ window.TOPICS = {
     </div>
     <div data-widget="playground" data-preset="rms" data-title="AdaGrad vs. RMSProp on a curvy valley" data-sub="On the non-convex banana valley, AdaGrad’s step size decays and it slows down; RMSProp keeps moving. Turn on Adam too."></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="#/s-adagrad">AdaGrad (this lecture)</a>.</span></li>
+    <li><span class="tag fwd">Used by</span><span><a href="#/s-adam">Adam (this lecture)</a>.</span></li>
+  </ul></div>
 </section>
 
 <section class="slide" id="s-adam" data-part="Part 1 · Update rules (8.3, 8.5)" data-title="Adam" data-stages="update">
@@ -351,6 +371,10 @@ window.TOPICS = {
     </div>
     <div data-widget="playground" data-preset="race" data-title="Optimizer race" data-sub="Pick a surface, turn methods on/off, tune their step sizes. No single method wins everywhere."></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="#/s-adam">Adam (this lecture)</a>.</span></li>
+    <li><span class="tag fwd">Used by</span><span><a href="ch08-6.html#/s-race">the optimizer race including second-order methods (L9)</a>.</span></li>
+  </ul></div>
 </section>
 
 <!-- ============================================================ -->

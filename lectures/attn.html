@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Self-Attention</title>
+<meta name="description" content="Interactive notes on self-attention: why CNNs and RNNs struggle with long-range dependencies, token embeddings, the query/key/value projections, QKᵀ scores, softmax weights, the weighted sum of values, shapes and cost, CNN vs RNN vs self-attention, and why position must be added — with every term and formula explained and live demos.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232a78d6'/%3E%3Cpath d='M6 9c5 0 6 14 10 14s5-14 10-14' fill='none' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<link rel="stylesheet" href="../css/style.css?v=19">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script defer src="../js/core.js?v=19"></script>
+<script defer src="../js/course.js?v=19"></script>
+<script defer src="../js/quiz.js?v=19"></script>
+<script defer src="../js/lectures/attn.js?v=19"></script>
+</head>
+<body data-page="lecture" data-lecture="attn">
+<script>
+window.TOPICS = {
+  data: [['s-embedding', 'Tokens become vectors: the matrix X']],
+  init: [['s-qkv', 'Three weight matrices W_q, W_k, W_v']],
+  forward: [['s-qkv', 'Project: Q, K, V'], ['s-scores', 'Score every pair: QKᵀ/√d_k'], ['s-softmax', 'Softmax → attention weights'], ['s-output', 'Weighted sum of values'], ['s-playground', 'The whole layer'], ['s-position', 'Add position information']],
+  backward: [['s-playground', 'All matrix products → ordinary back-propagation']],
+  update: [['s-compare', 'Needs massive datasets']],
+  final: [['s-cost', 'Cost per layer, sequential steps, path length'], ['s-compare', 'CNN vs RNN vs self-attention']]
+};
+</script>
+
+<main class="deck" id="deck">
+
+<section class="slide" id="s-title" data-part="Start here" data-title="Welcome: every token looks at every other token">
+  <div class="slide-head">
+    <span class="kicker">Lecture 14 · Supplementary slides</span>
+    <h1>Self-attention: every token looks at every other token</h1>
+    <p class="lede">Convolutions see a few neighbours; recurrent networks pass information one step at a time. <b>Self-attention</b> lets <b>every position interact directly with every other position</b> in one step: each token asks a <b>query</b>, every token offers a <b>key</b>, the matches become <b>weights</b>, and the output is a weighted mix of <b>values</b>. It is the building block of the Transformer.</p>
+  </div>
+  <div class="road">
+    <div class="card big"><span class="kicker">Part 1 · Why</span><h4>What CNNs and RNNs find hard</h4><ol><li>Long-range dependencies and path length</li><li>From words to vectors</li></ol><button class="btn primary go" type="button" data-goto="s-why">Start →</button></div>
+    <div class="card big"><span class="kicker">Part 2 · How</span><h4>The computation, step by step</h4><ol><li>Queries, keys, values</li><li>Scores → softmax → weights</li><li>Weighted sum; the whole layer</li></ol><button class="btn primary go" type="button" data-goto="s-qkv">Jump →</button></div>
+    <div class="card big"><span class="kicker">Part 3 · Compared</span><h4>Cost and trade-offs</h4><ol><li>Shapes and cost per layer</li><li>CNN vs. RNN vs. self-attention</li><li>Why position must be added</li></ol><button class="btn primary go" type="button" data-goto="s-cost">Jump →</button></div>
+  </div>
+</section>
+
+<section class="slide" id="s-loop" data-part="Start here" data-title="Where this lecture fits" data-stages="data,init,forward,update">
+  <div class="slide-head"><span class="kicker">Start here</span><h2>Where self-attention fits in training</h2><div class="stages"></div></div>
+  <p class="bigidea">Self-attention is a new kind of <b>layer</b>, so it changes the <b>forward pass</b>: three projections, a score for every pair of tokens, a softmax, a weighted sum — all <b>matrix products</b>, all positions <b>in parallel</b>. The loss, back-propagation and the optimizer are unchanged; what does change is the appetite for <b>data</b> and <b>memory</b>.</p>
+  <div class="stack"><div data-widget="loop"></div>
+    <div class="row3">
+      <div class="card plain"><h3><span class="dot"></span>From L10 and L11</h3><p>CNNs: local kernels, sharing, equivariance. RNNs: a state updated step by step. Self-attention keeps sharing (the same W for every token) but drops locality and sequential order.</p></div>
+      <div class="card plain"><h3><span class="dot"></span>From L4 and L5</h3><p>Softmax (as a weighting, not an output layer) and back-propagation through matrix products.</p></div>
+      <div class="card plain"><h3><span class="dot"></span>New here</h3><p>Query / key / value, the attention matrix, scaled dot products, path length, the n² cost, permutation equivariance and position encodings.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-why" data-part="Part 1 · Why" data-title="Why: path length between tokens" data-stages="forward">
+  <div class="slide-head"><span class="kicker">Self-attention · Motivation</span><h2>How far must information travel?</h2><div class="stages"></div></div>
+  <p class="bigidea">To relate the first word of a sentence to the last, an <b>RNN</b> must carry it through every intermediate state, and a <b>CNN</b> needs a stack of layers whose receptive field grows slowly. <b>Self-attention</b> connects <b>any two positions in one step</b> — and computes all pairs at once, with no sequential bottleneck.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \text{RNN: } |i-j| \text{ steps}\qquad \text{CNN: } \Big\lceil \tfrac{|i-j|}{k-1}\Big\rceil \text{ layers}\qquad \text{self-attention: } 1 \]<span class="eqno">path length between positions i and j</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Think of passing a note across a classroom. RNN: hand it to your neighbour, who hands it on (one step per seat; it gets smudged — vanishing gradients). CNN: each round, everyone can talk to the k − 1 people around them; the note reaches far seats only after several rounds. Self-attention: everyone can talk to everyone at once.</li>
+          <li>Short paths matter for <b>learning</b>: the gradient travels the same path backwards. Long paths are where gradients vanish or explode (L11).</li>
+          <li>They also matter for <b>speed</b>: an RNN cannot compute step t before step t − 1, while every output of a self-attention layer is independent of the others — all tokens run in parallel on a GPU.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Long-range dependency</dt><dd>Two far-apart positions whose relation matters (a pronoun and its noun).</dd>
+        <dt>Path length</dt><dd>The number of computation steps between two positions.</dd>
+        <dt>Receptive field</dt><dd>The set of inputs that can influence one unit (L10).</dd>
+        <dt>Sequential bottleneck</dt><dd>Work that must run in order and cannot be parallelized.</dd>
+        <dt>Token</dt><dd>One element of the sequence: a word, sub-word or pixel patch.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>n = 10 tokens, relate token 2 to token 9: distance 7.</li>
+        <li>RNN: 7 state updates in order — 7 multiplications by the recurrent Jacobian on the way back.</li>
+        <li>CNN with k = 3: each layer widens the receptive field by k − 1 = 2, so 7/2 → 4 layers. Self-attention: 1 step, and the 10 × 10 = 100 pairs are all scored at once.</li>
+      </ol></div>
+    </div>
+    <div data-widget="pathLength"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch09.html#/s-sparse">Receptive fields in CNNs (L10)</a>, <a href="ch10.html#/s-longterm">long-term dependencies in RNNs (L11)</a> and <a href="ch10.html#/s-bptt">the sequential nature of BPTT (L11)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-embedding" data-part="Part 1 · Why" data-title="Tokens → vectors: the matrix X" data-stages="data">
+  <div class="slide-head"><span class="kicker">Self-attention · Inputs</span><h2>From words to a matrix of numbers</h2><div class="stages"></div></div>
+  <p class="bigidea">A network cannot multiply words. Each token is looked up in an <b>embedding table</b> and becomes a vector of d numbers; the n token vectors are stacked into the input matrix \(\mathbf X\) of shape <b>n × d</b> (“number of tokens × embedding size”). Everything that follows is matrix arithmetic on X.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mathbf x_i=\mathbf E[\text{token}_i]\in\mathbb R^{d},\qquad \mathbf X=\begin{bmatrix}\mathbf x_1^{\top}\\ \vdots\\ \mathbf x_n^{\top}\end{bmatrix}\in\mathbb R^{n\times d} \]<span class="eqno">embedding lookup and the input matrix</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>The embedding table E has one row per vocabulary word (V rows, d columns). “Looking up” a word just picks its row. The rows are <b>learned</b> — they are weights like any other, updated by back-propagation.</li>
+          <li>In the demo the 4 features are made up and readable (question-ness, verb-ness, noun-ness, function-word-ness) so you can follow the arithmetic. Real embeddings have hundreds of dimensions with no human names.</li>
+          <li>Notice what is <b>missing</b>: nothing in X says <b>where</b> a token sits in the sentence. We will come back to that on the last slide.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Embedding</dt><dd>A learned vector that represents a token.</dd>
+        <dt>Embedding size d</dt><dd>The number of features per token (4 here; 512–4096 in practice).</dd>
+        <dt>Vocabulary V</dt><dd>The set of all tokens the model knows.</dd>
+        <dt>n</dt><dd>The number of tokens in the input sequence.</dd>
+        <dt>X (n × d)</dt><dd>The matrix whose row i is the embedding of token i.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>“How are you doing ?” → n = 5 tokens, d = 4 → X has 5 × 4 = 20 numbers.</li>
+        <li>Row 3 (“you”) = (0, 0.1, 1, 0): not a question word, barely a verb, a pronoun/noun, not a function word.</li>
+        <li>With a vocabulary of 50 000 words and d = 512 the table has 50 000 × 512 = 25.6 million learned numbers; each sentence uses n of its rows.</li>
+      </ol></div>
+    </div>
+    <div data-widget="tokenEmbed"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch10.html#/s-seq">Word vectors as RNN inputs (L11)</a> and <a href="ch15.html#/s-translation">distributed word representations (L13)</a>.</span></li>
+  </ul></div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-qkv" data-part="Part 2 · How" data-title="Queries, keys and values" data-stages="init,forward">
+  <div class="slide-head"><span class="kicker">Self-attention · Step 1</span><h2>Three projections: query, key, value</h2><div class="stages"></div></div>
+  <p class="bigidea">Each token vector is multiplied by <b>three learned weight matrices</b> to play three roles. The <b>query</b> \(\mathbf q_i\) says what token i is <b>looking for</b>; the <b>key</b> \(\mathbf k_j\) says what token j <b>offers</b> to be matched against; the <b>value</b> \(\mathbf v_j\) is the information token j <b>hands over</b> if it is attended to. The same three matrices are used for every token (parameter sharing).</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mathbf Q=\mathbf X\mathbf W_q\ (n\times d_q)\qquad \mathbf K=\mathbf X\mathbf W_k\ (n\times d_k)\qquad \mathbf V=\mathbf X\mathbf W_v\ (n\times d_v) \]<span class="eqno">W_q, W_k: d × d_k with d_q = d_k; W_v: d × d_v</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Library analogy: your <b>query</b> is what you type into the catalogue; every book has a <b>key</b> (its index card); the <b>value</b> is the book’s content. Matching queries to keys tells you which contents to read.</li>
+          <li>The query and key must have the <b>same size</b> d_k because they will be dot-multiplied; the value size d_v can differ (it sets the size of the output).</li>
+          <li>In the demo’s hand-designed weights, the “verb” feature feeds query slot 1 and the “noun” feature feeds key slot 1 — so verbs will look for nouns. A trained model discovers such weights by itself; random weights give arbitrary matches.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Query q_i</dt><dd>Token i’s “search request”: q_i = x_i W_q.</dd>
+        <dt>Key k_j</dt><dd>Token j’s “index card”: k_j = x_j W_k.</dd>
+        <dt>Value v_j</dt><dd>Token j’s “content”: v_j = x_j W_v.</dd>
+        <dt>W_q, W_k, W_v</dt><dd>The three learned projection matrices (shared by all tokens).</dd>
+        <dt>d_k, d_v</dt><dd>Sizes of the query/key vectors and of the value vectors.</dd>
+        <dt>Projection</dt><dd>A linear map (matrix product) into a new set of coordinates.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>x_are = (0.1, 1, 0, 0.2); W_q columns: (0.4, 1.4, 0, 0.3) and (0.6, 0, 1.2, 0.3).</li>
+        <li>q_are[1] = 0.1·0.4 + 1·1.4 + 0·0 + 0.2·0.3 = 0.04 + 1.4 + 0 + 0.06 = 1.50.</li>
+        <li>q_are[2] = 0.1·0.6 + 1·0 + 0·1.2 + 0.2·0.3 = 0.06 + 0 + 0 + 0.06 = 0.12. So q_are = (1.50, 0.12): “are” is looking for a slot-1 (noun) key.</li>
+      </ol></div>
+    </div>
+    <div data-widget="qkvProjection"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch06-1.html#/s-ffn">Linear layers as matrix products (L4)</a> and <a href="ch09.html#/s-sharing">parameter sharing (L10)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-scores" data-part="Part 2 · How" data-title="Scores: QKᵀ / √d_k" data-stages="forward">
+  <div class="slide-head"><span class="kicker">Self-attention · Step 2</span><h2>Score every query against every key</h2><div class="stages"></div></div>
+  <p class="bigidea">The score between token i and token j is the <b>dot product</b> \(\mathbf q_i\cdot\mathbf k_j\): large when what i looks for matches what j offers. All n² scores are one matrix product \(\mathbf Q\mathbf K^{\top}\) (n × n). Dividing by \(\sqrt{d_k}\) keeps the numbers in a sensible range so the softmax that follows is not too peaky.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mathbf S=\frac{\mathbf Q\mathbf K^{\top}}{\sqrt{d_k}}\in\mathbb R^{n\times n},\qquad S_{ij}=\frac{\mathbf q_i\cdot\mathbf k_j}{\sqrt{d_k}} \]<span class="eqno">the (scaled) attention scores; rows = queries, columns = keys</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>A dot product adds up “agreement” coordinate by coordinate: if the query is large in slot 1 and the key is large in slot 1, the score is large. Opposite signs give a negative score.</li>
+          <li>Row i of S is token i’s view of the whole sentence: how much it should care about each other token (including itself).</li>
+          <li>Why √d_k: if the entries of q and k have variance 1, their dot product has variance d_k. Dividing by √d_k brings it back to 1 — otherwise, with d_k = 64 or 512, the scores explode and the softmax becomes almost one-hot (tiny gradients).</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Dot product</dt><dd>q · k = Σ_m q[m]·k[m]: a measure of alignment.</dd>
+        <dt>Attention scores S</dt><dd>The n × n matrix of all query–key matches.</dd>
+        <dt>Scaled dot product</dt><dd>The dot product divided by √d_k.</dd>
+        <dt>Kᵀ</dt><dd>K transposed (d_k × n), so that QKᵀ is n × n.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>q_are = (1.50, 0.12); k_you = x_you W_k = (1.40, 0.14).</li>
+        <li>q_are · k_you = 1.50 × 1.40 + 0.12 × 0.14 = 2.10 + 0.02 = 2.12.</li>
+        <li>Scale: 2.12 / √2 = 1.50. Row “are” scaled: How 0.05, are 0.17, you 1.50, doing 0.26, ? 0.25 — “you” stands out.</li>
+      </ol></div>
+    </div>
+    <div data-widget="scoreMatrix"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch08-3.html#/s-init-scale">Why the scale of random numbers matters (L8)</a> and <a href="ch06-1.html#/s-softmax">softmax saturation (L4)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-softmax" data-part="Part 2 · How" data-title="Softmax → attention weights" data-stages="forward">
+  <div class="slide-head"><span class="kicker">Self-attention · Step 3</span><h2>Softmax: scores become weights that sum to one</h2><div class="stages"></div></div>
+  <p class="bigidea">Apply a softmax to <b>each row</b> of the score matrix. The result \(\mathbf A\) is the matrix of <b>attention weights</b>: every entry is positive and every row sums to 1, so row i says <b>what fraction of its attention</b> token i gives to each token j.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ A_{ij}=\operatorname{softmax}_j(S_{i\cdot})=\frac{e^{S_{ij}}}{\sum_{j'=1}^{n}e^{S_{ij'}}},\qquad \sum_j A_{ij}=1 \]<span class="eqno">row-wise softmax (the “Softmax” bubble in the slide figure)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Exponentiating makes every score positive and <b>amplifies differences</b>: a score 1.5 above the others gets e^1.5 ≈ 4.5 times more weight. Dividing by the sum turns the row into shares of 100 %.</li>
+          <li>Large scores → one token takes almost all the weight (a hard choice). Tiny scores → everyone gets the same share (no choice at all). The √d_k scaling keeps us in between.</li>
+          <li>This is the same softmax as the output layer of L4, used here not to predict a class but to <b>weight</b> the tokens.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Softmax</dt><dd>exp of each entry divided by the sum of exps.</dd>
+        <dt>Attention weights A (n × n)</dt><dd>Row-normalized scores; A_ij = how much i attends to j.</dd>
+        <dt>Row-wise</dt><dd>Applied separately to each row (each query).</dd>
+        <dt>Peaky / uniform</dt><dd>Weights concentrated on one token / spread evenly.</dd>
+        <dt>Entropy</dt><dd>A measure of how spread out the weights are (0 = one-hot, ln n = uniform).</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Row “are”: scores (0.05, 0.17, 1.50, 0.26, 0.25).</li>
+        <li>Exponentials: e^0.05 = 1.05, e^0.17 = 1.18, e^1.50 = 4.47, e^0.26 = 1.30, e^0.25 = 1.29; sum = 9.29.</li>
+        <li>Weights: 1.05/9.29 = 0.11, 0.13, <b>0.48</b>, 0.14, 0.14 — they add up to 1.00; nearly half of “are”’s attention goes to “you”.</li>
+      </ol></div>
+    </div>
+    <div data-widget="softmaxRow"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch06-1.html#/s-softmax">The softmax function (L4)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-output" data-part="Part 2 · How" data-title="Weighted sum of values" data-stages="forward">
+  <div class="slide-head"><span class="kicker">Self-attention · Step 4</span><h2>The output: a weighted mix of the values</h2><div class="stages"></div></div>
+  <p class="bigidea">The new representation of token i is the <b>weighted sum of all values</b>: \(\mathbf z_i=\sum_j A_{ij}\mathbf v_j\). In matrix form the whole layer’s output is \(\mathbf Z=\mathbf A\mathbf V\) (n × d_v) — the “hidden states” in the slide figure. Each token has absorbed information from the tokens it attended to.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mathbf z_i=\sum_{j=1}^{n}A_{ij}\,\mathbf v_j\qquad\Longleftrightarrow\qquad \mathbf Z=\mathbf A\mathbf V\in\mathbb R^{n\times d_v} \]<span class="eqno">attention output</span>
+        \[ \operatorname{Attention}(\mathbf Q,\mathbf K,\mathbf V)=\operatorname{softmax}\!\Big(\frac{\mathbf Q\mathbf K^{\top}}{\sqrt{d_k}}\Big)\mathbf V \]<span class="eqno">the whole layer in one line (scaled dot-product attention)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Because the weights sum to 1, z_i is an <b>average</b> of value vectors — it stays in the range of the values; it is just <b>which</b> values dominate that changes from token to token.</li>
+          <li>If “are” attends 48 % to “you”, then z_are is about half “you”’s value plus smaller shares of the others: the verb now “knows” its subject.</li>
+          <li>Stacking several such layers (with small feedforward networks in between) lets information combine over and over — that is a Transformer encoder.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>z_i</dt><dd>The output (new representation) of token i.</dd>
+        <dt>Z = AV (n × d_v)</dt><dd>All outputs at once: attention weights times values.</dd>
+        <dt>Weighted sum / convex combination</dt><dd>Σ_j a_j v_j with a_j ≥ 0 and Σ a_j = 1.</dd>
+        <dt>Hidden state</dt><dd>The representation passed to the next layer.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Values (3 numbers each): v_How = (1, 0.1, 0), v_are = (0.16, 1.06, 0.06), v_you = (0, 0.1, 1), v_doing = (0.2, 0.9, 0.1), v_? = (0.9, 0.3, 0.3).</li>
+        <li>Weights of “are”: (0.11, 0.13, 0.48, 0.14, 0.14). First output number: 0.11·1 + 0.13·0.16 + 0.48·0 + 0.14·0.2 + 0.14·0.9 = 0.11 + 0.02 + 0 + 0.03 + 0.13 = 0.29.</li>
+        <li>Likewise z_are ≈ (0.29, 0.36, 0.54): the third number is large because “you”’s value is (0, 0.1, 1) and “you” got the most weight.</li>
+      </ol></div>
+    </div>
+    <div data-widget="weightedSum"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch10.html#/s-forward">The RNN hidden state it replaces (L11)</a>.</span></li>
+    <li><span class="tag fwd">Next</span><span><a href="#/s-playground">the whole pipeline on one sentence</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-playground" data-part="Part 2 · How" data-title="The whole pipeline" data-stages="forward,backward">
+  <div class="slide-head"><span class="kicker">Self-attention · All steps</span><h2>The whole pipeline on one sentence</h2><div class="stages"></div></div>
+  <p class="bigidea">Embeddings → three projections → scores → softmax → weighted sum. Five steps, all <b>differentiable matrix operations</b>, so back-propagation trains the embeddings and \(\mathbf W_q,\mathbf W_k,\mathbf W_v\) like any other weights. The attention map \(\mathbf A\) is also a window into what the model “looks at”.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mathbf X\ \xrightarrow{\ \mathbf W_q,\mathbf W_k,\mathbf W_v\ }\ \mathbf Q,\mathbf K,\mathbf V\ \xrightarrow{\ \mathbf Q\mathbf K^{\top}/\sqrt{d_k}\ }\ \mathbf S\ \xrightarrow{\ \text{softmax}\ }\ \mathbf A\ \xrightarrow{\ \cdot\,\mathbf V\ }\ \mathbf Z \]<span class="eqno">the slide figure as a formula chain</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Read the attention map row by row: row “doing” shows which tokens the verb “doing” pulls information from. With the designed weights it is mostly “you” — the subject.</li>
+          <li>With <b>random</b> weights the map is arbitrary: an untrained model attends to nothing in particular. Training changes the weights until useful tokens match.</li>
+          <li>Real models run several attention maps in parallel (“multi-head”) so different heads can track different relations (subject–verb, adjective–noun, …), then concatenate the outputs. The arithmetic of each head is exactly what you see here.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Attention map</dt><dd>The matrix A drawn as a heat map (rows = queries).</dd>
+        <dt>Self-attention</dt><dd>Queries, keys and values all come from the same sequence X.</dd>
+        <dt>Head</dt><dd>One set of W_q, W_k, W_v; models use several in parallel.</dd>
+        <dt>Differentiable</dt><dd>Has derivatives everywhere, so gradients can flow through it.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Parameters of one head with d = 4, d_k = 2, d_v = 3: W_q 4×2 = 8, W_k 8, W_v 4×3 = 12 → 28 numbers (plus the embedding table). The count does not depend on n.</li>
+        <li>Work for n = 5: Q, K, V cost 5×4×(2+2+3) = 140 multiplications; QKᵀ 5×5×2 = 50; AV 5×5×3 = 75.</li>
+        <li>Back-propagation reverses each step: ∂J/∂V = Aᵀ ∂J/∂Z, ∂J/∂A = (∂J/∂Z) Vᵀ, then through the softmax and the two projections — all standard matrix calculus.</li>
+      </ol></div>
+    </div>
+    <div data-widget="attentionPlayground"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch06-5.html#/s-general">Back-propagation through any computational graph (L5)</a>.</span></li>
+  </ul></div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-cost" data-part="Part 3 · Compared" data-title="Shapes and cost per layer" data-stages="final">
+  <div class="slide-head"><span class="kicker">Self-attention · Cost</span><h2>What a layer costs: self-attention vs. recurrent vs. convolutional</h2><div class="stages"></div></div>
+  <p class="bigidea">Self-attention costs <b>O(n²·d)</b> per layer because every pair of tokens is scored — quadratic in the sequence length, but with <b>O(1) sequential operations</b> and <b>O(1) path length</b>. A recurrent layer costs O(n·d²) but needs <b>n sequential steps</b>; a convolutional layer costs O(k·n·d²) and needs O(log_k n) layers to connect distant positions.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \begin{array}{lccc} & \text{per layer} & \text{sequential ops} & \text{max path} \\ \text{self-attention} & O(n^2 d) & O(1) & O(1)\\ \text{recurrent} & O(n d^2) & O(n) & O(n)\\ \text{convolutional} & O(k\,n\,d^2) & O(1) & O(\log_k n) \end{array} \]<span class="eqno">the standard comparison (Vaswani et al., 2017, Table 1)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Where does n² come from? The score matrix has n rows and n columns, each entry a d_k-dimensional dot product. For a 1 000-token document that is a million scores per head per layer — and they must be <b>stored</b> for the softmax and for back-propagation: the “memory cost” in the slide’s table.</li>
+          <li>When <b>n &lt; d</b> (typical sentences, d in the hundreds) self-attention is actually <b>cheaper</b> per layer than a recurrent layer — and it runs in parallel. When n ≫ d (long documents, high-resolution images) the n² term bites.</li>
+          <li>The sequential-operations column is about wall-clock time on a GPU: O(n) sequential steps cannot be parallelized, O(1) can.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Complexity per layer</dt><dd>How the number of multiplications grows with n, d, k.</dd>
+        <dt>Sequential operations</dt><dd>Steps that must wait for the previous one.</dd>
+        <dt>Maximum path length</dt><dd>Longest distance information must travel between two positions.</dd>
+        <dt>Memory cost</dt><dd>Here: storing the n × n attention matrix for every head and layer.</dd>
+        <dt>O(·)</dt><dd>“Grows proportionally to” (constants ignored).</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>n = 128 tokens, d = 256: n²d = 16 384 × 256 = 4.2 M; nd² = 128 × 65 536 = 8.4 M; knd² (k = 3) = 25.2 M. Self-attention is the cheapest.</li>
+        <li>n = 4 096, d = 512: n²d = 8.6 G; nd² = 1.07 G. Now self-attention is 8× more expensive — and the attention matrix alone has 16.8 M entries per head and layer.</li>
+        <li>Path length for n = 4 096: RNN 4 096 steps; CNN with k = 3 needs log₃ 4 096 ≈ 8 layers; self-attention 1.</li>
+      </ol></div>
+    </div>
+    <div data-widget="costCompare"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch06-5.html#/s-general">Counting the cost of forward and backward passes (L5)</a> and <a href="ch09.html#/s-sharing">why convolution is cheap (L10)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-compare" data-part="Part 3 · Compared" data-title="CNN vs RNN vs self-attention" data-stages="update,final">
+  <div class="slide-head"><span class="kicker">Self-attention · The comparison table</span><h2>CNN vs. RNN vs. self-attention</h2><div class="stages"></div></div>
+  <p class="bigidea">Each architecture encodes a different <b>assumption</b>. CNN: <b>locality</b> and <b>translation equivariance</b>. RNN: <b>sequential state</b> shared over steps. Self-attention: <b>pairwise query–key–value interactions</b> with no locality at all — which gives direct long-range interactions and full parallelism, at the price of <b>n² cost</b> and a <b>hunger for data</b> (fewer built-in assumptions means more must be learned).</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li><b>CNN</b>: local sliding kernels; sparse interactions, parameter sharing, equivariance. ✓ highly parallel, compact parameters. ✗ long-range dependencies need many layers.</li>
+          <li><b>RNN</b>: step-by-step state update with shared transition weights. ✓ any length, can in principle carry global context, reuses one unit. ✗ sequential training bottleneck, vanishing/exploding gradients.</li>
+          <li><b>Self-attention</b>: pairwise Q–K–V interactions. ✓ direct interaction between any two inputs, fully parallelizable. ✗ computational and memory cost, requires massive training datasets.</li>
+          <li>The last point is the no-free-lunch theorem of L1 in action: the convolutional prior is a gift when it is true (images); attention gives it up and must learn the structure from data instead.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Characteristic</dt><dd>What the layer computes and assumes.</dd>
+        <dt>Translation equivariance</dt><dd>Shift the input → the output shifts the same way (L10).</dd>
+        <dt>Transition weights</dt><dd>The RNN’s hidden-to-hidden matrix W (L11).</dd>
+        <dt>Parallelizable</dt><dd>Computable for all positions at the same time.</dd>
+        <dt>Inductive bias / prior</dt><dd>Assumptions built into the architecture (L1, L10).</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Parameters for d = 512: one 3-wide 1-D conv layer 3 × 512 × 512 = 0.8 M; one RNN step 512 × 512 (W) + 512 × 512 (U) = 0.5 M; one attention head with d_k = d_v = 64: 3 × 512 × 64 = 0.1 M (8 heads: 0.8 M). Comparable — the difference is not the parameter count.</li>
+        <li>Time for n = 512 tokens on a parallel machine: attention and CNN ≈ 1 round each; RNN 512 rounds.</li>
+        <li>Data: with no locality prior, attention must learn from examples that “nearby words matter” — that is why it shines when training sets are huge.</li>
+      </ol></div>
+    </div>
+    <div data-widget="archTable"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch09.html#/s-prior">Convolution as an infinitely strong prior (L10)</a>, <a href="ch10.html#/s-longterm">RNN gradients (L11)</a> and <a href="ch05-1.html#/s-nfl">no free lunch (L1)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-position" data-part="Part 3 · Compared" data-title="Order and position" data-stages="forward">
+  <div class="slide-head"><span class="kicker">Self-attention · Beyond the slide</span><h2>Self-attention ignores order — so position must be added</h2><div class="stages"></div></div>
+  <p class="bigidea">Nothing in \(\operatorname{softmax}(\mathbf Q\mathbf K^{\top}/\sqrt{d_k})\mathbf V\) depends on the <b>index</b> i or j — only on the vectors. Shuffle the tokens and every token gets <b>exactly the same output</b>, just shuffled along (<b>permutation equivariance</b>). To know that “How” came first, a <b>position vector</b> is added to each embedding before the projections.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mathbf Z(\mathbf P\mathbf X)=\mathbf P\,\mathbf Z(\mathbf X)\quad\text{for any permutation matrix }\mathbf P \]<span class="eqno">permutation equivariance of a self-attention layer</span>
+        \[ \mathbf x_i\leftarrow \mathbf x_i+\mathbf p_i \]<span class="eqno">position encoding: add a vector that depends on i (sinusoidal or learned)</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>An RNN knows order because it reads left to right; a CNN knows relative position because the kernel has a left and a right. Self-attention is a <b>set</b> operation: a bag of tokens.</li>
+          <li>“Dog bites man” and “man bites dog” would get identical token outputs. Adding a position vector to each embedding makes “dog at position 1” a different vector from “dog at position 3”, and the attention can use that.</li>
+          <li>This is not in the slide’s figures, but it is the reason Transformers add position encodings — and it shows that the table’s “pairwise interactions” are between <b>vectors</b>, not between positions.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Permutation</dt><dd>A reordering of the tokens.</dd>
+        <dt>Permutation equivariance</dt><dd>Reordering the input reorders the output identically.</dd>
+        <dt>Position encoding p_i</dt><dd>A vector that depends only on the position i, added to x_i.</dd>
+        <dt>Set vs. sequence</dt><dd>A set has no order; a sequence does.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Without positions, shuffle “How are you doing ?” to “you doing How ? are”: the output row for “you” is the same vector as before — only its row number changed. Largest change in any output: 0.000.</li>
+        <li>With position vectors, “you” at position 3 has x = (0, 0.1, 1, 0) + p₃ and at position 1 it has x + p₁ ≠ x + p₃: its query, key and value change, and so do all outputs.</li>
+        <li>Check in the demo: the “largest change” statistic is exactly 0 without positions and clearly positive with them.</li>
+      </ol></div>
+    </div>
+    <div data-widget="permuteDemo"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch09.html#/s-equivariance">Equivariance in CNNs (L10)</a> and <a href="ch10.html#/s-unfold">order in RNNs (L11)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-summary" data-part="Wrap-up" data-title="Summary: how it all connects" data-stages="forward,final">
+  <div class="slide-head"><span class="kicker">Wrap-up</span><h2>Summary: how it all connects</h2><div class="stages"></div></div>
+  <p class="bigidea">Self-attention = <b>project</b> each token into a query, a key and a value; <b>score</b> every pair with a scaled dot product; <b>softmax</b> each row into weights; <b>mix</b> the values. One step between any two positions, everything in parallel, at a cost of n² — and with no notion of order unless you add one.</p>
+  <div class="card" style="padding:0;overflow:hidden"><div class="scroll-x"><table class="data-table">
+    <thead><tr><th>Step</th><th>Formula</th><th>Shape</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td>Embed</td><td>\(\mathbf X=[\mathbf x_1;\dots;\mathbf x_n]\)</td><td>n × d</td><td>tokens as vectors</td></tr>
+      <tr><td>Project</td><td>\(\mathbf Q=\mathbf X\mathbf W_q,\ \mathbf K=\mathbf X\mathbf W_k,\ \mathbf V=\mathbf X\mathbf W_v\)</td><td>n × d_k, n × d_k, n × d_v</td><td>what I seek · what I offer · what I give</td></tr>
+      <tr><td>Score</td><td>\(\mathbf S=\mathbf Q\mathbf K^{\top}/\sqrt{d_k}\)</td><td>n × n</td><td>match of every query with every key</td></tr>
+      <tr><td>Weight</td><td>\(\mathbf A=\operatorname{softmax}_{\text{rows}}(\mathbf S)\)</td><td>n × n, rows sum to 1</td><td>share of attention</td></tr>
+      <tr><td>Mix</td><td>\(\mathbf Z=\mathbf A\mathbf V\)</td><td>n × d_v</td><td>new token representations</td></tr>
+      <tr><td>Cost</td><td>\(O(n^2d)\), O(1) sequential, path 1</td><td>—</td><td>vs. RNN O(nd²), n sequential, path n</td></tr>
+      <tr><td>Order</td><td>\(\mathbf x_i+\mathbf p_i\)</td><td>n × d</td><td>position must be added explicitly</td></tr>
+    </tbody>
+  </table></div></div>
+  <div class="row3" style="margin-top:16px">
+    <div class="card plain"><h3><span class="dot"></span>Remember</h3><p>Attention(Q, K, V) = softmax(QKᵀ/√d_k) V. Every token’s output is an average of all values, weighted by how well its query matches their keys.</p></div>
+    <div class="card plain"><h3><span class="dot"></span>The whole course</h3><p>From linear regression to attention: go back to the <a href="../index.html">course map</a> to see how every lecture connects in the training loop.</p></div>
+    <div class="card fit"><h3><span class="dot"></span>Check yourself</h3><p>Ten quiz questions with explanations.</p><button class="btn primary" type="button" data-goto="s-quiz" style="margin-top:6px">Take the quiz →</button></div>
+  </div>
+</section>
+
+<section class="slide" id="s-quiz" data-part="Wrap-up" data-title="Check yourself (quiz)">
+  <div class="slide-head"><span class="kicker">Wrap-up</span><h2>Check yourself</h2><p class="lede">Pick an answer to see whether it is right and why.</p></div>
+  <div data-widget="quiz"></div>
+  <footer class="credits">Study notes on self-attention (supplementary lecture). The comparison table follows the lecture slide; the cost table follows Vaswani et al., <em>Attention Is All You Need</em> (2017). Explanations, diagrams and demos are original.</footer>
+</section>
+
+</main>
+</body>
+</html>

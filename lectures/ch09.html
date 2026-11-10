@@ -10,13 +10,13 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
-<link rel="stylesheet" href="../css/style.css?v=18">
+<link rel="stylesheet" href="../css/style.css?v=19">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
-<script defer src="../js/core.js?v=18"></script>
-<script defer src="../js/course.js?v=18"></script>
-<script defer src="../js/quiz.js?v=18"></script>
-<script defer src="../js/lectures/ch09.js?v=18"></script>
+<script defer src="../js/core.js?v=19"></script>
+<script defer src="../js/course.js?v=19"></script>
+<script defer src="../js/quiz.js?v=19"></script>
+<script defer src="../js/lectures/ch09.js?v=19"></script>
 </head>
 <body data-page="lecture" data-lecture="ch09">
 <script>
@@ -125,6 +125,10 @@ window.TOPICS = {
     </div>
     <div data-widget="conv2dExplorer"></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="#/s-conv-op">the convolution operation (this lecture)</a>.</span></li>
+    <li><span class="tag fwd">Used by</span><span><a href="#/s-conv-matrix">convolution as a matrix product (this lecture)</a>, <a href="attn.html#/s-why">how far information travels in a CNN (L14)</a>.</span></li>
+  </ul></div>
 </section>
 
 <section class="slide" id="s-conv-matrix" data-part="Part 1 · Convolution & motivation" data-title="Convolution as a matrix" data-stages="forward">
@@ -254,6 +258,10 @@ window.TOPICS = {
     </div>
     <div data-widget="equivariance"></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="#/s-sharing">parameter sharing (this lecture)</a>.</span></li>
+    <li><span class="tag fwd">Used by</span><span><a href="#/s-pooling">pooling and invariance (this lecture)</a>, <a href="attn.html#/s-position">permutation equivariance of self-attention (L14)</a>.</span></li>
+  </ul></div>
 </section>
 
 <!-- ============================================================ -->
@@ -392,6 +400,10 @@ window.TOPICS = {
     </div>
     <div data-widget="multiChannel"></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="#/s-layer">the stages of a convolutional layer (this lecture)</a>.</span></li>
+    <li><span class="tag fwd">Used by</span><span><a href="#/s-stride">stride (this lecture)</a>.</span></li>
+  </ul></div>
 </section>
 
 <section class="slide" id="s-stride" data-part="Part 3 · Convolution in practice" data-title="Stride" data-stages="forward">
@@ -421,6 +433,10 @@ window.TOPICS = {
     </div>
     <div data-widget="convArithmetic" data-mode="stride"></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="#/s-variants">variants of the basic convolution (this lecture)</a>.</span></li>
+    <li><span class="tag fwd">Used by</span><span><a href="#/s-padding">padding (this lecture)</a>.</span></li>
+  </ul></div>
 </section>
 
 <section class="slide" id="s-padding" data-part="Part 3 · Convolution in practice" data-title="Zero padding" data-stages="forward">
@@ -449,6 +465,10 @@ window.TOPICS = {
     </div>
     <div data-widget="convArithmetic" data-mode="padding"></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="#/s-stride">stride (this lecture)</a>.</span></li>
+    <li><span class="tag fwd">Used by</span><span><a href="#/s-conv-grad">gradients of convolution (this lecture)</a>.</span></li>
+  </ul></div>
 </section>
 
 <section class="slide" id="s-local" data-part="Part 3 · Convolution in practice" data-title="Locally connected & tiled layers" data-stages="forward">
@@ -479,6 +499,10 @@ window.TOPICS = {
     </div>
     <div data-widget="connectivityCompare"></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="#/s-sharing">parameter sharing (this lecture)</a>.</span></li>
+    <li><span class="tag fwd">Used by</span><span><a href="#/s-cnn-arch">a complete CNN (this lecture)</a>.</span></li>
+  </ul></div>
 </section>
 
 <section class="slide" id="s-conv-grad" data-part="Part 3 · Convolution in practice" data-title="Gradients & biases" data-stages="backward,update">
@@ -551,6 +575,10 @@ window.TOPICS = {
     </div>
     <div data-widget="variableInput"></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="#/s-conv2d">2-D convolution (this lecture)</a>.</span></li>
+    <li><span class="tag fwd">Used by</span><span><a href="ch10.html#/s-seq">sequences of variable length (L11)</a>, <a href="attn.html#/s-embedding">tokens as vectors (L14)</a>.</span></li>
+  </ul></div>
 </section>
 
 <section class="slide" id="s-cnn-arch" data-part="Part 3 · Convolution in practice" data-title="Putting it together: a complete CNN" data-stages="init,forward,loss,backward,update">

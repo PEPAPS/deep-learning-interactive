@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transfer Learning &amp; Domain Adaptation</title>
+<meta name="description" content="Interactive notes for Deep Learning chapter 15.2: transfer learning, domain adaptation, concept drift and multitask learning; which layers to share; generalizing from few examples; one-shot and zero-shot learning; linking representations across languages — with every term explained and live demos.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232a78d6'/%3E%3Cpath d='M6 9c5 0 6 14 10 14s5-14 10-14' fill='none' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<link rel="stylesheet" href="../css/style.css?v=19">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script defer src="../js/core.js?v=19"></script>
+<script defer src="../js/course.js?v=19"></script>
+<script defer src="../js/quiz.js?v=19"></script>
+<script defer src="../js/lectures/ch15.js?v=19"></script>
+</head>
+<body data-page="lecture" data-lecture="ch15">
+<script>
+window.TOPICS = {
+  data: [['s-what', 'Two settings: lots of data in P₁, little in P₂'], ['s-domain-adapt', 'The input distribution shifts'], ['s-drift', 'The data drift over time']],
+  init: [['s-shared-features', 'Start from the representation learned on P₁'], ['s-share-upper', 'Which layers to reuse, which to retrain']],
+  forward: [['s-multitask', 'Shared trunk, task-specific heads'], ['s-zero-shot', 'Predict attributes, then match descriptions']],
+  loss: [['s-multitask', 'Sum of the task losses']],
+  final: [['s-shared-features', 'Generalize from very few P₂ examples'], ['s-one-shot', 'One labeled example per class'], ['s-translation', 'Translate words never seen translated']]
+};
+</script>
+
+<main class="deck" id="deck">
+
+<section class="slide" id="s-title" data-part="Start here" data-title="Welcome: reuse what you learned">
+  <div class="slide-head">
+    <span class="kicker">Lecture 13 · Chapter 15</span>
+    <h1>Transfer learning and domain adaptation</h1>
+    <p class="lede">Deep networks need a lot of data — but much of what they learn on one problem is <b>reusable</b> on another. <b>Transfer learning</b> exploits what was learned in one setting (distribution <b>P₁</b>) to generalize better in another (<b>P₂</b>). Its relatives are <b>domain adaptation</b> (same task, shifted inputs), <b>concept drift</b> (shift over time) and <b>multitask learning</b> (one representation, several tasks). At the extreme it allows learning from <b>one</b> example — or from <b>none</b>.</p>
+  </div>
+  <div class="road">
+    <div class="card big"><span class="kicker">Part 1 · What and why</span><h4>Transfer learning</h4><ol><li>Two settings, shared factors</li><li>Why few examples suffice afterwards</li><li>Which layers to share</li></ol><button class="btn primary go" type="button" data-goto="s-what">Start →</button></div>
+    <div class="card big"><span class="kicker">Part 2 · Variations</span><h4>Adaptation, drift, multitask</h4><ol><li>Domain adaptation (sentiment analysis)</li><li>Concept drift</li><li>Multitask learning</li></ol><button class="btn primary go" type="button" data-goto="s-domain-adapt">Jump →</button></div>
+    <div class="card big"><span class="kicker">Part 3 · The extremes</span><h4>One-shot, zero-shot</h4><ol><li>One-shot learning</li><li>Zero-shot (zero-data) learning</li><li>Linking two representation spaces</li></ol><button class="btn primary go" type="button" data-goto="s-one-shot">Jump →</button></div>
+  </div>
+</section>
+
+<section class="slide" id="s-loop" data-part="Start here" data-title="Where this lecture fits" data-stages="data,init,forward,loss,final">
+  <div class="slide-head"><span class="kicker">Start here</span><h2>Where transfer learning fits in training</h2><div class="stages"></div></div>
+  <p class="bigidea">Transfer learning changes the <b>starting point</b> of the loop: instead of random weights, the second task starts from a <b>representation already learned</b> on the first. It also changes what we count as <b>data</b> (two settings instead of one) and what we hope for at the <b>end</b>: good generalization from very few examples.</p>
+  <div class="stack"><div data-widget="loop"></div>
+    <div class="row3">
+      <div class="card plain"><h3><span class="dot"></span>From L1 and L2</h3><p>Generalization needs enough data for the capacity; the curse of dimensionality makes raw inputs hungry for examples. A good representation is the escape.</p></div>
+      <div class="card plain"><h3><span class="dot"></span>From L9 and L12</h3><p>Pretraining and autoencoders already produced reusable representations. Here we study <b>when</b> and <b>how</b> reuse works.</p></div>
+      <div class="card plain"><h3><span class="dot"></span>New here</h3><p>P₁ vs. P₂; sharing lower or upper layers; domain adaptation, concept drift, multitask; one-shot and zero-shot learning.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-what" data-part="Part 1 · What and why" data-title="Transfer learning and domain adaptation" data-stages="data">
+  <div class="slide-head"><span class="kicker">15.2 · Transfer learning and domain adaptation</span><h2>Two settings, one shared explanation</h2><div class="stages"></div></div>
+  <p class="bigidea"><b>Transfer learning</b> and <b>domain adaptation</b> refer to the situation where what has been learned in one setting (distribution \(P_1\)) is exploited to improve generalization in another setting (distribution \(P_2\)). The assumption: <b>many of the factors that explain the variations in \(P_1\) are relevant to the variations that need to be captured for \(P_2\)</b>.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \text{learn on } P_1\ (\text{lots of data})\ \longrightarrow\ \text{reuse on } P_2\ (\text{little data}) \]<span class="eqno">the transfer setting</span>
+        \[ \text{transfer: same input kind, new targets}\qquad \text{adaptation: same task, shifted inputs} \]<span class="eqno">the two main flavours</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>You learned to tell cats from dogs on 10 000 photos. Now you must tell ants from wasps with 20 photos. The categories are new, but “photo-ness” — edges, shapes, lighting, geometry — is the same. That shared part is what transfers.</li>
+          <li>Transfer learning is typically understood in a <b>supervised</b> context: the <b>input is the same</b> kind but the <b>target is of a different nature</b> (new visual categories).</li>
+          <li><b>Domain adaptation</b>: the task and the optimal input-to-output mapping stay the same, but the <b>input distribution</b> is slightly different (book reviews → electronics reviews).</li>
+          <li>Both work through <b>representation learning</b>: a representation whose features correspond to <b>underlying factors</b> that appear in more than one setting.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Setting</dt><dd>A task together with its data distribution.</dd>
+        <dt>P₁, P₂</dt><dd>The data distributions of the first (source) and second (target) setting.</dd>
+        <dt>Transfer learning</dt><dd>Using knowledge from P₁ to generalize better on P₂.</dd>
+        <dt>Domain adaptation</dt><dd>Same task, different input distribution.</dd>
+        <dt>Factors of variation</dt><dd>The underlying causes that make inputs differ (pose, lighting, topic…).</dd>
+        <dt>Representation</dt><dd>The features h = f(x) a network computes from the input.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>A convolutional net for P₁ has 1 000 000 weights and 10 000 labeled photos: 100 weights per example — fine with regularization.</li>
+        <li>P₂ has 20 labeled photos. Training the same net from scratch: 50 000 weights per example — hopeless.</li>
+        <li>Reuse the network up to its 64-dimensional representation and train only a new output layer: 64 × 2 + 2 = 130 weights for 20 examples — about 6 weights per example. Feasible.</li>
+      </ol></div>
+    </div>
+    <div data-widget="twoSettings"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch05-1.html#/s-generalization">Generalization (L1)</a>, <a href="ch05-1.html#/s-experience">the i.i.d. assumption behind training data (L1)</a> and <a href="ch14.html#/s-what">representations learned by autoencoders (L12)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-shared-features" data-part="Part 1 · What and why" data-title="Why transfer helps: shared features" data-stages="init,final">
+  <div class="slide-head"><span class="kicker">15.2 · Transfer learning and domain adaptation</span><h2>Why it works: shared low-level factors, and a lot of P₁ data</h2><div class="stages"></div></div>
+  <p class="bigidea">If there is <b>significantly more data</b> in the first setting, it can help to learn representations that let us <b>quickly generalize from only very few examples</b> drawn from \(P_2\). Many visual categories share low-level notions of <b>edges and visual shapes</b>, the effects of <b>geometric changes</b>, <b>changes in lighting</b>, and so on.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mathbf h=f(\mathbf x)\ \text{learned on } P_1,\qquad \hat y_2=\text{simple classifier}(\mathbf h)\ \text{fit on a few } P_2 \text{ examples} \]<span class="eqno">reuse the representation, learn only the new mapping</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Raw pixels of ants and wasps overlap hopelessly: lighting and pose vary more than the species. A representation trained on cats and dogs already <b>factors out</b> lighting and pose, so in that space the new classes form tight, separate clusters.</li>
+          <li>In a space where classes are tight clusters, even a very simple classifier — “which labeled example is closest?” — works, and it needs only a handful of labels.</li>
+          <li>Transfer learning, multitask learning and domain adaptation can all be achieved via representation learning when there exist <b>features useful for the different settings</b>, corresponding to underlying factors that appear in more than one setting.</li>
+          <li>If P₁’s factors are <b>not</b> relevant to P₂, nothing transfers (slide the relevance to 0 in the demo).</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Low-level features</dt><dd>Edges, corners, textures — computed in the first layers.</dd>
+        <dt>Nearest-centroid classifier</dt><dd>Predict the class whose average labeled example is closest.</dd>
+        <dt>Few-shot</dt><dd>Learning a class from a small number n of labeled examples.</dd>
+        <dt>Cluster spread</dt><dd>How far the examples of one class scatter around their centre.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Three new classes, n = 2 labeled examples each. Learned features: class centres estimated from the 2 points, e.g. c₁ = (−1.3, 1.0), c₂ = (1.4, 0.9), c₃ = (0.1, −1.4).</li>
+        <li>A test point (1.2, 0.7): distances² = 6.3, 0.08, 5.6 → class 2. With cluster spread 0.3 almost every test point lands near its own centre: ≈ 100 % accuracy.</li>
+        <li>Raw pixels, spread 1.05: the same two labeled points give centre estimates off by ≈ 0.7 and the clusters overlap: ≈ 60 % accuracy.</li>
+      </ol></div>
+    </div>
+    <div data-widget="fewShot"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch09.html#/s-conv2d">Convolution detects edges (L10)</a>, <a href="ch05-4.html#/s-curse">the curse of dimensionality (L2)</a> and <a href="ch14.html#/s-applications">codes that place related examples near each other (L12)</a>.</span></li>
+    <li><span class="tag fwd">Leads to</span><span><a href="#/s-one-shot">one-shot learning</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-share-upper" data-part="Part 1 · What and why" data-title="Which layers to share" data-stages="init">
+  <div class="slide-head"><span class="kicker">15.2 · Transfer learning and domain adaptation</span><h2>Share the bottom — or the top</h2><div class="stages"></div></div>
+  <p class="bigidea">Sometimes what is shared is <b>not the semantics of the input but the semantics of the output</b>. A speech recognizer must produce valid sentences for every speaker, but its early layers must handle very different versions of the same phonemes depending on who is speaking. Then it makes more sense to <b>share the upper layers</b> (near the output) and have <b>task-specific preprocessing</b>.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \text{input semantics shared}\Rightarrow\text{share lower layers}\qquad \text{output semantics shared}\Rightarrow\text{share upper layers} \]<span class="eqno">a rule of thumb</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>A network is a pipeline: early layers describe the <b>input</b> (edges → shapes → parts), late layers describe the <b>output</b> (parts → category). Share whichever end is the same in both settings.</li>
+          <li><b>Vision, new categories</b>: the input is still photos → keep the lower layers, retrain the top.</li>
+          <li><b>Speech, new speaker</b>: the output is still sentences → keep the upper layers, give each speaker (or group) its own input processing.</li>
+          <li>Reused layers can be <b>frozen</b> (not updated) or <b>fine-tuned</b> (updated gently). Frozen layers cost no P₂ data at all.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Lower / upper layers</dt><dd>Layers near the input / near the output.</dd>
+        <dt>Semantics of the input</dt><dd>What the raw input means (photos look alike).</dd>
+        <dt>Semantics of the output</dt><dd>What the output must be (valid sentences).</dd>
+        <dt>Phoneme</dt><dd>A basic sound unit of speech.</dd>
+        <dt>Frozen layer</dt><dd>Reused weights that are not changed during the second training.</dd>
+        <dt>Fine-tuning</dt><dd>Continuing to train reused weights with a small learning rate.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Layers 256 → 192 → 128 → 96 → 64 → 32 → 10. Weights per layer = in × out + out: 49 344, 24 704, 12 384, 6 208, 2 080, 330 (total 95 050).</li>
+        <li>Vision (reuse the first four): train 2 080 + 330 = 2 410 weights on P₂; 92 640 (97 %) come from P₁.</li>
+        <li>Speech (reuse the last four): train 49 344 + 24 704 = 74 048 weights for the new speaker’s input processing; the 21 002 weights that turn features into sentences are shared.</li>
+      </ol></div>
+    </div>
+    <div data-widget="whichLayers"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch06-1.html#/s-arch">Architecture design (L4)</a> and <a href="ch08-6.html#/s-pretrain">pretraining and fine-tuning (L9)</a>.</span></li>
+  </ul></div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-domain-adapt" data-part="Part 2 · Variations" data-title="Domain adaptation" data-stages="data">
+  <div class="slide-head"><span class="kicker">15.2 · Transfer learning and domain adaptation</span><h2>Domain adaptation: same task, shifted inputs</h2><div class="stages"></div></div>
+  <p class="bigidea">In <b>domain adaptation</b> the task (and the optimal input-to-output mapping) <b>remains the same</b> between settings, but the <b>input distribution</b> is slightly different. Sentiment analysis: a predictor trained on reviews of books, videos and music is later used on comments about televisions or smartphones. There is an underlying function that tells whether any statement is positive, neutral or negative — but the <b>vocabulary and style</b> vary from one domain to another.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ P_1(\mathbf x)\neq P_2(\mathbf x),\qquad P_1(y\mid\mathbf x)=P_2(y\mid\mathbf x) \]<span class="eqno">inputs shift, the mapping does not</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>“Gripping plot” and “crisp screen” are both praise, but a model that learned praise from book reviews has never seen “crisp”. The <b>words</b> shifted; the <b>meaning of positive</b> did not.</li>
+          <li>A shift along a direction the classifier <b>ignores</b> (style) is harmless; a shift along the direction it <b>uses</b> (vocabulary for “good”) moves the classes across the old boundary.</li>
+          <li>Adaptation can use <b>no labels</b> (align the statistics of the two domains, e.g. re-center the features) or <b>a few labels</b> from the target domain (fine-tune). Both are cheap because the task is unchanged.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Domain</dt><dd>A source of inputs with its own distribution (books vs. electronics).</dd>
+        <dt>Source / target domain</dt><dd>Where the model was trained / where it will be used.</dd>
+        <dt>Input distribution P(x)</dt><dd>Which inputs occur, and how often.</dd>
+        <dt>Decision boundary</dt><dd>The line where the classifier switches from one class to the other.</dd>
+        <dt>Re-centering</dt><dd>Shifting the target features so their mean matches the source mean.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Source classes centred at (+1, 0) and (−1, 0); the learned boundary is f₁ = 0 (feature 2 does not matter).</li>
+        <li>Target shifted by (0.3, 1.4): centres (1.3, 1.4) and (−0.7, 1.4). The boundary f₁ = 0 still separates them well: the style shift is harmless.</li>
+        <li>Target shifted by (1.5, 0): centres (2.5, 0) and (0.5, 0) — both on the positive side: accuracy ≈ 50 %. Re-centering subtracts the estimated shift (1.5, 0): boundary f₁ = 1.5 → back to ≈ 96 %.</li>
+      </ol></div>
+    </div>
+    <div data-widget="domainShift"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch05-4.html#/s-prob-sl">Logistic regression and linear decision boundaries (L2)</a> and <a href="ch08-6.html#/s-bn-how">normalizing statistics (L9)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-drift" data-part="Part 2 · Variations" data-title="Concept drift" data-stages="data,final">
+  <div class="slide-head"><span class="kicker">15.2 · Transfer learning and domain adaptation</span><h2>Concept drift: the slow version</h2><div class="stages"></div></div>
+  <p class="bigidea"><b>Concept drift</b> is gradual change of the data distribution <b>over time</b> — a form of transfer learning in which the second setting is the first one, a little later. Both concept drift and transfer learning can be viewed as particular forms of <b>multitask learning</b>.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ P_{t}\ \to\ P_{t+1}\ \to\ P_{t+2}\ \to\cdots \qquad \text{each month a slightly different } P_2 \]<span class="eqno">drift = a sequence of small transfers</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Spam changes its wording, customers change their habits, sensors age. A model trained once keeps its old boundary while the data walk away from it.</li>
+          <li>The training assumption of L1 — examples are i.i.d. from one fixed distribution — is violated slowly. Accuracy decays slowly too, which makes drift easy to miss.</li>
+          <li>Treat it as transfer: keep the representation, <b>refresh</b> the model with recent data regularly (or continuously). How often depends on how fast the data move.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Concept drift</dt><dd>Gradual change of P(x) or P(y | x) over time.</dd>
+        <dt>i.i.d.</dt><dd>Independent and identically distributed — the usual assumption about training data (L1).</dd>
+        <dt>Retraining schedule</dt><dd>How often the model is refit on recent data.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Class centres rotate 4° per month. After 12 months: 48°; the month-0 boundary is 48° off.</li>
+        <li>With centres 1.1 away from the origin and spread 0.5, the accuracy of the month-0 model drops from ≈ 99 % to ≈ 88 % at month 12 and toward 50 % by month 24.</li>
+        <li>Retraining every 6 months keeps the boundary within 20° of the truth: accuracy stays above ≈ 95 % all year.</li>
+      </ol></div>
+    </div>
+    <div data-widget="driftDemo"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch05-1.html#/s-experience">The i.i.d. assumption (L1)</a> and <a href="ch07.html#/s-early-stop">monitoring validation error over time (L6)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-multitask" data-part="Part 2 · Variations" data-title="Multitask learning" data-stages="forward,loss">
+  <div class="slide-head"><span class="kicker">15.2 · Transfer learning and domain adaptation</span><h2>Multitask learning: one representation, several tasks</h2><div class="stages"></div></div>
+  <p class="bigidea">The objective of <b>multitask learning</b> is to take advantage of data from the first setting to extract information that may be useful when learning — or even when directly making predictions — in the second setting. Using the <b>same representation</b> in both settings allows the representation to benefit from the <b>training data available for both tasks</b>.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ J(\boldsymbol\theta_{\text{shared}},\boldsymbol\theta_A,\boldsymbol\theta_B)=J_A+J_B \]<span class="eqno">the shared parameters get gradients from both losses</span>
+        \[ \text{std. error alone}=\frac{\sigma}{\sqrt{n_B}}\qquad \text{shared}=\frac{\sigma}{\sqrt{n_A+n_B}} \]<span class="eqno">toy model: estimating a shared quantity</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Architecture: a shared <b>trunk</b> computes the representation; each task has its own small <b>head</b>. The total loss is the sum of the task losses, so every example of every task improves the trunk.</li>
+          <li>Why it helps: the trunk’s parameters are estimated from <b>all</b> the data (statistical strength), while each head only needs its own data. Task B with 8 examples “borrows” the 120 examples of task A for the shared part.</li>
+          <li>Transfer learning is multitask learning done <b>sequentially</b>; concept drift is multitask learning spread <b>over time</b>.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Trunk / head</dt><dd>The shared layers / the task-specific output layers.</dd>
+        <dt>Statistical strength</dt><dd>Precision gained by estimating one quantity from more examples.</dd>
+        <dt>Standard error</dt><dd>Typical error of an estimate: σ/√n for an average of n noisy values.</dd>
+        <dt>J_A, J_B</dt><dd>The losses of the two tasks.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Noise σ = 1 per example. Task B alone, n_B = 8: standard error 1/√8 = 0.354.</li>
+        <li>Shared with task A, n_A = 120: 1/√128 = 0.088 — four times more precise.</li>
+        <li>The gain is √((n_A + n_B)/n_B) = √16 = 4. With n_A = 0 there is nothing to borrow and the gain is 1.</li>
+      </ol></div>
+    </div>
+    <div data-widget="multitaskDemo"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch10.html#/s-seq">Sharing parameters = pooling statistical strength (L11)</a>, <a href="ch09.html#/s-sharing">parameter sharing in CNNs (L10)</a> and <a href="ch05-4.html#/s-variance">variance of an estimator (L2)</a>.</span></li>
+  </ul></div>
+</section>
+
+<!-- ============================================================ -->
+<section class="slide" id="s-one-shot" data-part="Part 3 · The extremes" data-title="One-shot learning" data-stages="final">
+  <div class="slide-head"><span class="kicker">15.2 · Transfer learning and domain adaptation</span><h2>One-shot learning: a single labeled example</h2><div class="stages"></div></div>
+  <p class="bigidea">Two extreme forms of transfer learning are <b>one-shot</b> and <b>zero-shot</b> learning. In one-shot learning only <b>one labeled example</b> of the transfer task is given per class. It is possible because the representation learned in the first stage <b>cleanly separates</b> the underlying classes: during transfer, one labeled example is enough to infer the label of the many test examples that <b>cluster around the same point</b> in representation space.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \hat y(\mathbf x)=y_{j^*},\qquad j^*=\arg\min_j\big\|f(\mathbf x)-f(\mathbf x_j)\big\| \]<span class="eqno">nearest labeled example in representation space</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Show a child one picture of an okapi and it will recognize okapis — because it already has a representation of animals in which “okapi-like” is a tight region. The network needs the same: a good first-stage representation.</li>
+          <li>With one labeled point per class, the classifier is simply “which labeled example is closest?”. It works when each class is one tight cluster, and fails when clusters overlap (switch the representation quality in the demo).</li>
+          <li>The labeled example does not teach the representation anything — it only <b>names</b> a cluster that already existed.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>One-shot learning</dt><dd>Learning to recognize a class from a single labeled example.</dd>
+        <dt>Representation space</dt><dd>The space of feature vectors f(x).</dd>
+        <dt>Cluster</dt><dd>A tight group of points of the same class.</dd>
+        <dt>Nearest-neighbour rule</dt><dd>Copy the label of the closest labeled example.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Labeled examples (one per class) at A = (−1.3, 1.2), B = (1.6, 0.8), C = (0.1, −1.5).</li>
+        <li>Test point (1.4, 1.0): distances to A, B, C = 2.71, 0.28, 2.82 → class B.</li>
+        <li>With cluster spread 0.35 nearly every point is closer to its own class’s example (≈ 97 % agree); with spread 1.0 the clusters overlap and only ≈ 60 % do.</li>
+      </ol></div>
+    </div>
+    <div data-widget="oneShotDemo"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="#/s-shared-features">shared features (this lecture)</a> and <a href="ch14.html#/s-applications">codes that group related examples (L12)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-zero-shot" data-part="Part 3 · The extremes" data-title="Zero-shot learning" data-stages="forward,final">
+  <div class="slide-head"><span class="kicker">15.2 · Transfer learning and domain adaptation</span><h2>Zero-shot learning: no labeled example at all</h2><div class="stages"></div></div>
+  <p class="bigidea">In <b>zero-shot</b> (zero-data) learning <b>no labeled examples</b> of the new classes are given. Consider a learner that reads a large collection of text and then solves object recognition: having read that a cat has <b>four legs and pointy ears</b>, it might guess that an image is a cat without having seen a cat. This is only possible because <b>additional information</b> was exploited during training.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mathbf x\ \xrightarrow{\ \text{trained detector}\ }\ \hat{\mathbf a}\ (\text{attributes})\qquad \hat y=\arg\max_{c}\ \text{match}\big(\hat{\mathbf a},\ \mathbf a_c^{\text{text}}\big) \]<span class="eqno">image → attributes → best-matching description</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>Split recognition in two: (1) image → <b>attributes</b> (legs, stripes, wings…), learned from the classes we <b>do</b> have images of; (2) attributes → <b>class</b>, taken from <b>text descriptions</b>, which exist for classes we have never seen.</li>
+          <li>A zebra photo yields “four legs, hooves, stripes, black &amp; white”. No zebra image was ever shown, but the description matches — and nothing else does.</li>
+          <li>The extra information (text) is a second modality linked to the first through shared attributes: the same idea as linking two languages on the next slide.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Zero-shot / zero-data learning</dt><dd>Recognizing classes with no labeled training examples.</dd>
+        <dt>Attribute</dt><dd>A describable property (four legs, stripes) shared across classes.</dd>
+        <dt>Seen / unseen class</dt><dd>A class with / without training images.</dd>
+        <dt>Description</dt><dd>The attribute vector of a class, obtained from text.</dd>
+        <dt>Match score</dt><dd>How many attributes agree between the detection and a description.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>12 attributes. Detected in the photo: {four legs, fur, hooves, stripes, black &amp; white, large}.</li>
+        <li>Agreement with each description (present in both or absent in both): zebra 12/12, horse 10/12 (no stripes, not black &amp; white), giraffe 9/12, cat 7/12.</li>
+        <li>Best match: zebra — an unseen class. If the detector misses “stripes”, zebra and horse tie at 11/12: zero-shot accuracy depends on reliable attribute detection.</li>
+      </ol></div>
+    </div>
+    <div data-widget="zeroShotDemo"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch06-1.html#/s-output-sigmoid">Sigmoid outputs for yes/no attributes (L4)</a>.</span></li>
+    <li><span class="tag fwd">Next</span><span><a href="#/s-translation">linking two representation spaces</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-translation" data-part="Part 3 · The extremes" data-title="Linking two representation spaces" data-stages="final">
+  <div class="slide-head"><span class="kicker">15.2 · Transfer learning and domain adaptation</span><h2>Linking two spaces: translating a word never seen translated</h2><div class="stages"></div></div>
+  <p class="bigidea">In machine translation we may have no example translating word A in language X to word B in language Y — yet we can guess a translation, because we learned a <b>distributed representation</b> for the words of each language and then created a <b>link</b> (possibly two-way) between the two spaces from matched sentence pairs. The transfer is most successful when the two representations and the relations between them are <b>learned jointly</b>.</p>
+  <div class="cols">
+    <div class="stack">
+      <div class="math">\[ \mathbf y\approx\mathbf W\mathbf x+\mathbf b\quad\text{fit on matched pairs }(\mathbf x_i,\mathbf y_i) \]<span class="eqno">a linear link between the English space and the Spanish space</span>
+        \[ \text{translation}(w)=\arg\min_{w'}\big\|\mathbf W\mathbf x_w+\mathbf b-\mathbf y_{w'}\big\| \]<span class="eqno">map across, then take the nearest neighbour</span></div>
+      <div class="card plain"><h3><span class="dot"></span>In plain words</h3>
+        <ul>
+          <li>In each language, words with related meanings sit near each other: animals together, numbers together, colours together. The two “maps” have the <b>same shape</b>, only rotated, scaled and shifted.</li>
+          <li>A few matched pairs (cat–gato, king–rey, one–uno) are enough to fit the rotation/scale/shift. Then <b>every</b> English word can be carried across and matched to its nearest Spanish word — including words that never appeared in a pair.</li>
+          <li>The same mechanism links images to text (zero-shot learning), speech to text, and so on.</li>
+        </ul>
+      </div>
+      <div class="card terms"><h3><span class="dot"></span>Terms on this slide</h3><dl>
+        <dt>Distributed representation</dt><dd>A word as a vector of many features, so similar words are nearby.</dd>
+        <dt>Anchor / matched pair</dt><dd>A word pair known to be translations, used to fit the link.</dd>
+        <dt>Linear map W, b</dt><dd>Rotation/scaling (W) and shift (b) from one space to the other.</dd>
+        <dt>Least squares</dt><dd>Choose W, b to minimize Σ‖Wxᵢ + b − yᵢ‖² over the anchors (L3).</dd>
+        <dt>Nearest neighbour</dt><dd>The Spanish vector closest to the mapped English vector.</dd>
+      </dl></div>
+      <div class="card worked"><h3><span class="dot"></span>Calculation, step by step</h3><ol class="calc">
+        <li>Spanish space = English space rotated 35°, scaled 1.1, shifted by (0.4, −0.2). Three anchors fix the 6 numbers of W and b by least squares.</li>
+        <li>“dog” = (1.4, 0.7). The map fit on three anchors is x′ = 1.00x − 0.61y + 0.43, y′ = 0.51x + 1.02y − 0.30, so “dog” lands at (1.00·1.4 − 0.61·0.7 + 0.43, 0.51·1.4 + 1.02·0.7 − 0.30) = (1.41, 1.13).</li>
+        <li>Nearest Spanish vector to (1.41, 1.13): “perro” at distance 0.21 — correct, although dog–perro was never a training pair.</li>
+      </ol></div>
+    </div>
+    <div data-widget="translateMap"></div>
+  </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="ch10.html#/s-seq">Word vectors and sequence models (L11)</a> and <a href="ch04-3.html#/s-least-squares">linear least squares (L3)</a>.</span></li>
+    <li><span class="tag fwd">Used by</span><span><a href="attn.html#/s-embedding">Token embeddings in self-attention (L14)</a>.</span></li>
+  </ul></div>
+</section>
+
+<section class="slide" id="s-summary" data-part="Wrap-up" data-title="Summary: how it all connects" data-stages="data,init,final">
+  <div class="slide-head"><span class="kicker">Wrap-up</span><h2>Summary: how it all connects</h2><div class="stages"></div></div>
+  <p class="bigidea">All of these are the same move: find a <b>representation whose features are shared</b> across settings, learn it where data are plentiful, and reuse it where they are scarce. The less that changes between settings, the less new data you need — down to <b>one</b> example, or <b>none</b> if a description can stand in for it.</p>
+  <div class="card" style="padding:0;overflow:hidden"><div class="scroll-x"><table class="data-table">
+    <thead><tr><th>Idea</th><th>What stays the same</th><th>What changes</th><th>What to do</th></tr></thead>
+    <tbody>
+      <tr><td>Transfer learning</td><td>input kind, low-level factors</td><td>the target (new categories)</td><td>reuse lower layers, learn a new top</td></tr>
+      <tr><td>Shared output semantics</td><td>the output (valid sentences)</td><td>the inputs (speakers)</td><td>share upper layers, task-specific preprocessing</td></tr>
+      <tr><td>Domain adaptation</td><td>task and mapping P(y | x)</td><td>input distribution P(x)</td><td>align statistics, fine-tune with few labels</td></tr>
+      <tr><td>Concept drift</td><td>the task</td><td>P(x) gradually over time</td><td>retrain regularly on recent data</td></tr>
+      <tr><td>Multitask learning</td><td>a shared representation</td><td>the tasks</td><td>J = ΣJ_task; trunk + heads</td></tr>
+      <tr><td>One-shot</td><td>a representation that separates classes</td><td>one label per new class</td><td>nearest labeled example</td></tr>
+      <tr><td>Zero-shot</td><td>attributes / descriptions</td><td>no labels at all</td><td>predict attributes, match descriptions</td></tr>
+      <tr><td>Two spaces</td><td>the structure of each space</td><td>the language / modality</td><td>learn a link from matched pairs</td></tr>
+    </tbody>
+  </table></div></div>
+  <div class="row3" style="margin-top:16px">
+    <div class="card plain"><h3><span class="dot"></span>Remember</h3><p>Transfer works exactly as far as the <b>factors of variation</b> are shared — and fails where they are not.</p></div>
+    <div class="card plain"><h3><span class="dot"></span>Next lecture</h3><p>A new way to build representations of sequences: <a href="attn.html">Lecture 14 — Self-attention</a>. Or go back to the <a href="../index.html">course map</a>.</p></div>
+    <div class="card fit"><h3><span class="dot"></span>Check yourself</h3><p>Ten quiz questions with explanations.</p><button class="btn primary" type="button" data-goto="s-quiz" style="margin-top:6px">Take the quiz →</button></div>
+  </div>
+</section>
+
+<section class="slide" id="s-quiz" data-part="Wrap-up" data-title="Check yourself (quiz)">
+  <div class="slide-head"><span class="kicker">Wrap-up</span><h2>Check yourself</h2><p class="lede">Pick an answer to see whether it is right and why.</p></div>
+  <div data-widget="quiz"></div>
+  <footer class="credits">Study notes for Deep Learning, chapter 15.2. Section numbers follow Goodfellow, Bengio &amp; Courville, <em>Deep Learning</em> (MIT Press, 2016). Explanations, diagrams and demos are original.</footer>
+</section>
+
+</main>
+</body>
+</html>

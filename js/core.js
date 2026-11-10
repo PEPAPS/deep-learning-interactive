@@ -503,7 +503,7 @@ function buildChrome() {
     hub ? null : iconBtn('menuBtn', ICONS.menu, '', 'Open slide list'),
     h('div', { class: 'brand' },
       h('b', {}, hub ? 'Deep Learning — Interactive Course Notes' : (lec ? lec.title : document.title)),
-      h('span', {}, hub ? 'Every lecture explained, illustrated and connected' : (lec ? `Lecture ${lec.n} · Chapter ${lec.ch}` : ''))),
+      h('span', {}, hub ? 'Every lecture explained, illustrated and connected' : (lec ? `Lecture ${lec.n} · ${lec.chLabel || 'Chapter ' + lec.ch}` : ''))),
     hub ? null : h('a', { class: 'icon-btn', href: Course.home(), title: 'Course home', html: ICONS.home + '<span class="txt">Course</span>' }),
     hub ? null : iconBtn('modeBtn', ICONS.page, 'One page', 'Switch between slides and one long page'),
     iconBtn('themeBtn', ICONS.theme, 'Dark', 'Toggle light / dark theme'),
@@ -539,7 +539,7 @@ const Deck = {
     const toc = $('#toc');
     const lec = Course.current();
     toc.append(h('a', { class: 'toc-home', href: Course.home() }, '← All lectures (course home)'));
-    if (lec) toc.append(h('div', { class: 'toc-lec' }, h('span', { class: 'kicker' }, `Lecture ${lec.n} · Ch ${lec.ch}`), h('b', {}, lec.title)));
+    if (lec) toc.append(h('div', { class: 'toc-lec' }, h('span', { class: 'kicker' }, `Lecture ${lec.n} · ${lec.chLabel || 'Ch ' + lec.ch}`), h('b', {}, lec.title)));
     let part = null;
     this.slides.forEach((s, i) => {
       if (s.dataset.part !== part) {

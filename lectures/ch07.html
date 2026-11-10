@@ -10,13 +10,13 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
-<link rel="stylesheet" href="../css/style.css?v=18">
+<link rel="stylesheet" href="../css/style.css?v=19">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
-<script defer src="../js/core.js?v=18"></script>
-<script defer src="../js/course.js?v=18"></script>
-<script defer src="../js/quiz.js?v=18"></script>
-<script defer src="../js/lectures/ch07.js?v=18"></script>
+<script defer src="../js/core.js?v=19"></script>
+<script defer src="../js/course.js?v=19"></script>
+<script defer src="../js/quiz.js?v=19"></script>
+<script defer src="../js/lectures/ch07.js?v=19"></script>
 </head>
 <body data-page="lecture" data-lecture="ch07">
 <script>
@@ -192,6 +192,10 @@ window.TOPICS = {
     </div>
     <div data-widget="ridgePath"></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="#/s-l2">the L² penalty (this lecture)</a>, <a href="ch04-3.html#/s-jacobian-hessian">the Hessian and curvature (L3)</a>.</span></li>
+    <li><span class="tag fwd">Used by</span><span><a href="#/s-early-l2">early stopping as L² regularization (this lecture)</a>.</span></li>
+  </ul></div>
 </section>
 
 <section class="slide" id="s-l1" data-part="Part 1 · Penalties & data (7.1–7.5)" data-title="L1 regularization & sparsity" data-stages="loss">
@@ -384,6 +388,9 @@ window.TOPICS = {
     </div>
     <div data-widget="earlyVsL2"></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="#/s-early-stop">early stopping (this lecture)</a>, <a href="#/s-l2-geom">the geometry of L² (this lecture)</a>.</span></li>
+  </ul></div>
 </section>
 
 <section class="slide" id="s-bagging" data-part="Part 2 · Time & ensembles (7.8–7.12)" data-title="Bagging & ensembles" data-stages="init,final">
@@ -486,6 +493,10 @@ window.TOPICS = {
     </div>
     <div data-widget="weightScaling"></div>
   </div>
+  <div class="card links" style="margin-top:16px"><h3><span class="dot"></span>Connections</h3><ul class="conn">
+    <li><span class="tag back">Builds on</span><span><a href="#/s-dropout">dropout (this lecture)</a>, <a href="#/s-bagging">bagging (this lecture)</a>.</span></li>
+    <li><span class="tag fwd">Used by</span><span><a href="ch08-6.html#/s-bn-how">batch normalization, which also regularizes (L9)</a>.</span></li>
+  </ul></div>
 </section>
 
 <section class="slide" id="s-summary" data-part="Wrap-up" data-title="Summary: how it all connects" data-stages="data,batch,forward,loss,update,final">
